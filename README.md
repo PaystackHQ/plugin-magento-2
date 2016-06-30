@@ -12,7 +12,7 @@ Install
 
     ```bash
     composer config repositories.profibropaystack git https://github.com/ibrahimlawal/magento2-Profibro_Paystack.git
-    composer require profibro/paystack:dev-master
+    composer require profibro/paystack:dev-develop
     ```
    Wait while dependencies are updated.
 

@@ -2,7 +2,7 @@
     "name": "profibro/paystack",
     "description": "Paystack integration for Magento 2",
     "type": "magento2-module",
-    "version": "dev-master",
+    "version": "dev-develop",
     "license": [
         "OSL-3.0"
     ],
