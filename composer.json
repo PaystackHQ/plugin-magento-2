@@ -1,19 +1,16 @@
 {
-    "name": "profibro/paystack",
+    "name": "paystack/inline",
     "description": "Paystack integration for Magento 2",
     "type": "magento2-module",
     "version": "dev-develop",
     "license": [
         "OSL-3.0"
     ],
-    "require": {
-        "yabacon/paystack-php": "2.*"
-    },
     "extra": {
         "map": [
             [
                 "*",
-                "Profibro/Paystack"
+                "Paystack/Inline"
             ]
         ]
     }
