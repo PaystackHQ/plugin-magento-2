@@ -43,14 +43,6 @@ class Paymentmethod extends \Magento\Payment\Model\Method\AbstractMethod {
         );
     }
 
-
-    public function assignData($data)
-    {
-        $info = $this->getInfoInstance();
- 
-        return $this;
-    }
-
     public function validate()
     {
         parent::validate();

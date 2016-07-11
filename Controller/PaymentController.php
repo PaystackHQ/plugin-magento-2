@@ -101,6 +101,9 @@ class Payment extends \Magento\Framework\App\Action\Action
         return $this->getResponse()->setRedirect( Mage::getUrl('checkout/onepage'));
     }
 
+    public function execute(){
+        
+    }
     public function popAction() 
     {
         $this->loadLayout();

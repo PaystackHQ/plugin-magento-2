@@ -39,12 +39,11 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
 
     public function __construct(
         \Magento\Framework\App\Helper\Context $context,
-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
         \Magento\Checkout\Model\Session $checkoutSession,
         \Magento\Sales\Model\OrderFactory $salesOrderFactory
     ) {
         $this->salesOrderFactory = $salesOrderFactory;
-        $this->scopeConfig = $scopeConfig;
+        $this->scopeConfig = $context->scopeConfig;
         $this->checkoutSession = $checkoutSession;
         parent::__construct(
             $context
