@@ -1,7 +1,7 @@
-magento2-Profibro_Paystack
+magento2-Paystack_Inline
 ======================
 
-Paystack payment gateway Magento2 extension
+Paystack Inline payment gateway Magento2 extension
 
 Install
 =======
@@ -11,18 +11,18 @@ Install
 2. Enter following commands to install module:
 
     ```bash
-    composer config repositories.profibropaystack git https://github.com/ibrahimlawal/magento2-Profibro_Paystack.git
-    composer require profibro/paystack:dev-develop
+    composer config repositories.paystackinline git https://github.com/ibrahimlawal/magento2-Paystack_Inline.git
+    composer require paystack/inline:dev-develop
     ```
    Wait while dependencies are updated.
 
 3. Enter following commands to enable module:
 
     ```bash
-    php bin/magento module:enable Profibro_Paystack --clear-static-content
+    php bin/magento module:enable Paystack_Inline --clear-static-content
     php bin/magento setup:upgrade
     ```
-4. Enable and configure Paystack in Magento Admin under Stores/Configuration/Payment Methods/Paystack
+4. Enable and configure Paystack Inline in Magento Admin under Stores/Configuration/Payment Methods/Inline
 
 Other Notes
 ===========
