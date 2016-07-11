@@ -1,0 +1,21 @@
+<?php
+/**
+ * Paytsack Inline Extension
+ *
+ * DISCLAIMER
+ * This file will not be supported if it is modified.
+ *
+ * @category   Paystack
+ * @author     Ibrahim Lawal (@ibrahimlawal)
+ * @package    Paystack_Inline
+ * @copyright  Copyright (c) 2016 Paystack. (https://www.paystack.com/)
+ * @license    https://raw.githubusercontent.com/PaystackHQ/paystack-magento/master/LICENSE   MIT License (MIT)
+ */
+
+?><div class="form-list" id="payment_form_<?php echo $this->getMethodCode() ?>" style="display:none;">
+    <?php echo $this->__('You will be prompted for card details when you place an order.') ?><br/>
+    <img src="<?php echo $this->getSkinUrl('paystack/images/paystack.png');?>"/>
+</div>
+<div>
+    <?php echo $this->getMethod()->getConfigData('message');?>
+</div>

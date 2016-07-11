@@ -1,29 +1,20 @@
 <?xml version="1.0"?>
-<!--
-/**
-* Profibro_Paystack default configuration
-*
-* @category    Profibro
-* @package     Profibro_Paystack
-* @author      Ibrahim Lawal
-* @copyright   Ibrahim Lawal (http://ibrahim.lawal.me)
-* @license     http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
-*/
--->
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
-            <profibro_paystack>
-                <active>0</active>
-                <model>Profibro\Paystack\Model\Payment</model>
-                <payment_action>authorize_capture</payment_action>
-                <title>Paystack</title>
-                <secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <public_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <cctypes>VI,MC,Verve</cctypes>
+            <paystack_inline>
+                <active>1</active>
+                <model>paystack_inline/paymentmethod</model>
+                <order_status>pending</order_status>
+                <title>Debit/Credit Cards (powered by Paystack)</title>
                 <allowspecific>0</allowspecific>
-                <min_order_total>0.50</min_order_total>
-            </profibro_paystack>
+                <test_mode>1</test_mode>
+                <secret_key_test>sk_test_xxxx</secret_key_test>
+                <public_key_test>pk_test_xxxx</public_key_test>
+                <secret_key_live>sk_live_xxxx</secret_key_live>
+                <public_key_live>pk_live_xxxx</public_key_live>
+                <payment_action>sale</payment_action>
+            </paystack_inline>
         </payment>
     </default>
 </config>

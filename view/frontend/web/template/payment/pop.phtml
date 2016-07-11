@@ -1,0 +1,75 @@
+<?php
+/**
+ * Paytsack Inline Extension
+ *
+ * DISCLAIMER
+ * This file will not be supported if it is modified.
+ *
+ * @category   Paystack
+ * @author     Ibrahim Lawal (@ibrahimlawal)
+ * @package    Paystack_Inline
+ * @copyright  Copyright (c) 2016 Paystack. (https://www.paystack.com/)
+ * @license    https://raw.githubusercontent.com/PaystackHQ/paystack-magento/master/LICENSE   MIT License (MIT)
+ */
+
+$params = Mage::helper('paystack_inline')->getFormParams();
+
+// only show popup if parameters were found
+if($params):
+    
+?>
+<script src="https://js.paystack.co/v1/inline.js"></script>
+<script>
+//<![CDATA[
+    (function(PaystackPop){
+        /* Get a random reference number based on the current time
+         * 
+         * gotten from http://stackoverflow.com/a/2117523/671568
+         * replaced UUID with REF
+         */
+        function generateREF(){
+          var d = new Date().getTime();
+          if(window.performance && typeof window.performance.now === "function"){
+            d += performance.now(); //use high-precision timer if available
+          }
+          var ref = '-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = (d + Math.random()*16)%16 | 0;
+            d = Math.floor(d/16);
+            return (c=='x' ? r : (r&0x3|0x8)).toString(16);
+          });
+          return ref;
+        }
+
+        function addParam(url, param, value) {
+           var a = document.createElement('a'), regex = /(?:\?|&amp;|&)+([^=]+)(?:=([^&]*))*/gi;
+           var params = {}, match, str = []; a.href = url;
+           while (match = regex.exec(a.search))
+               if (encodeURIComponent(param) != match[1]) 
+                   str.push(match[1] + (match[2] ? "=" + match[2] : ""));
+           str.push(encodeURIComponent(param) + (value ? "=" + encodeURIComponent(value) : ""));
+           a.search = str.join("&");
+           return a.href;
+        }
+
+        function payWithPaystack(){
+            var handler = PaystackPop.setup({
+        <?php foreach ($params as $name => $value): ?>
+            <?php echo $name; ?>: '<?php echo str_replace(array("'","\n"),array("\\'"," "),$value); ?>',
+        <?php endforeach; ?>
+                ref: '<?php echo $params["orderId"]; ?>' + generateREF(),
+                callback: function(response){
+                    window.location.href = addParam('<?php echo $params["nextUrl"]; ?>', "trxref", response.trxref);
+                },
+                onClose: function(){
+                    window.location.href = '<?php echo $params["cancelUrl"]; ?>';
+                }
+            });
+            handler.openIframe();
+        }
+        window.onload = payWithPaystack();
+    })(PaystackPop);
+//]]>
+</script>
+<?php 
+
+endif;
