@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
     <router id="standard">
-        <route id="paystack" frontName="paystack"/>
+        <route id="paystack" frontName="paystack">
+            <module name="Profibro_Paystack" />
+        </route>
     </router>
 </config>
