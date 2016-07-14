@@ -5,16 +5,25 @@ use Profibro\Paystack\Controller\AbstractAction;
 
 class Index extends AbstractAction
 {
+
+    protected function getSessionAuthUrl(){
+        return $this->paystackSession->getTransactionUrl();
+    }
+
+    protected function redirectToCheckout(){
+        $this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
+    }
+
     public function execute()
     {
-        $callback_url = $this->_url->getUrl('*/verify');
-        die($callback_url);
-        $params = [
-            'email'=>'ibrahim@lawal.me',
-            'amount'=>100000,
-            'callback_url'=>$callback_url,
-        ];
-        $p = $this->_paystack->transaction->initialize($params);
-        $this->getResponse()->setRedirect($p->data->authorization_url);
+        // get Auth url from session
+        $authUrl = $this->getSessionAuthUrl();
+        if(!$authUrl){
+            $this->redirectToCheckout();
+            return;
+        }
+        $this->getResponse()->setRedirect($authUrl);
+        // unset URL after redirect
+        $this->paystackSession->unsTransactionUrl();
     }
 }

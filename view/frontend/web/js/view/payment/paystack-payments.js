@@ -1,12 +1,3 @@
-/**
- * Profibro_Paystack Magento JS component
- *
- * @category    Profibro
- * @package     Profibro_Paystack
- * @author      Ibrahim Lawal
- * @copyright   Ibrahim Lawal (http://ibrahim.lawal.me)
- * @license     http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
- */
 /*browser:true*/
 /*global define*/
 define(

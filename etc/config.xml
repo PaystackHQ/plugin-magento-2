@@ -4,7 +4,7 @@
         <payment>
             <profibro_paystack>
                 <active>1</active>
-                <model>Profibro\Paysack\Model\Payment</model>
+                <model>Profibro\Paystack\Model\Payment</model>
                 <payment_action>authorize</payment_action>
                 <title>Credit/Debit Cards (powered by Paystack)</title>
                 <secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
