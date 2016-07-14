@@ -61,7 +61,6 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
     
     public function canUseForCurrency($currencyCode)
     {
-        return true;
         if (!in_array($currencyCode, $this->_supportedCurrencyCodes)) {
             return false;
         }
@@ -128,7 +127,6 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
 
     public function isAvailable(\Magento\Quote\Api\Data\CartInterface $quote = null)
     {
-        return true;
         if ($quote && (
             $quote->getBaseGrandTotal() < $this->_minAmount
             || ($this->_maxAmount && $quote->getBaseGrandTotal() > $this->_maxAmount))

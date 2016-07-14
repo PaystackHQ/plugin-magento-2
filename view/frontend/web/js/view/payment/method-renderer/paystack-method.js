@@ -32,9 +32,6 @@ define(
                 var self = this;
 
                 this._super();
-
-                // Invite Paystack Inline
-                $("body").append("<form ><script src=\"https://js.paystack.co/v1/inline.js\"></script></form>");
             },
 
             getCode: function() {
