@@ -15,9 +15,11 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
 
     protected $_minAmount = null;
     protected $_secretKey = false;
+    protected $_publicKey = false;
+    protected $_useInline = false;
     
     protected $_supportedCurrencyCodes = array('NGN');
-    protected $urlBuilder = false;
+    protected $_urlBuilder = false;
 
     /**
      * @var \Magento\Framework\Session\Generic
@@ -55,8 +57,10 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
         $this->paystackSession = $paystackSession;
         $this->_minAmount = $this->getConfigData('min_order_total');
         $this->_maxAmount = $this->getConfigData('max_order_total');
-        $this->urlBuilder = $urlBuilder;
+        $this->_urlBuilder = $urlBuilder;
         $this->_secretKey = $this->getConfigData('secret_key');
+        $this->_publicKey = $this->getConfigData('public_key');
+        $this->_useInline = $this->getConfigData('use_inline');
     }
     
     public function canUseForCurrency($currencyCode)
@@ -65,6 +69,16 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
             return false;
         }
         return true;
+    }
+    
+    public function shouldUseInline()
+    {
+        return $this->_useInline;
+    }
+    
+    public function getPublicKey()
+    {
+        return $this->_publicKey;
     }
     
     protected function generateRandomString($length = 10) {
@@ -102,7 +116,7 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
                 'description'   => sprintf('#%s, %s', $order->getIncrementId(), $order->getCustomerEmail()),
                 'email'         => $order->getCustomerEmail(),
                 'reference'     => $order->getIncrementId() . '-' . $this->generateRandomString(),
-                'callback_url'  => $this->urlBuilder->getUrl('paystack/verify')
+                'callback_url'  => $this->_urlBuilder->getUrl('paystack/verify')
             ];
 
             $paystack = new \Yabacon\Paystack($this->_secretKey);

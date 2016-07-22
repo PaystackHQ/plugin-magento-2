@@ -14,5 +14,12 @@
             </argument>
         </arguments>
     </type>
+    <type name="Magento\Checkout\Model\CompositeConfigProvider">
+        <arguments>
+            <argument name="configProviders" xsi:type="array">
+                <item name="paystack_inline_config_provider" xsi:type="object">Profibro\Paystack\Model\InlineConfigProvider</item>
+            </argument>
+        </arguments>
+    </type>
 
 </config>

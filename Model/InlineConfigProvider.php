@@ -10,7 +10,7 @@ use Magento\Framework\Locale\ResolverInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Payment\Helper\Data as PaymentHelper;
 
-class StandardConfigProvider implements ConfigProviderInterface
+class InlineConfigProvider implements ConfigProviderInterface
 {
     /**
      * @var \Magento\Payment\Model\Method\AbstractMethod
@@ -48,13 +48,14 @@ class StandardConfigProvider implements ConfigProviderInterface
     {
         $config = [
             'payment' => [
-                'paystackStandard' => [],
+                'paystackInline' => [],
             ],
         ];
-        $config['payment']['paystackStandard']['enabled'] = false;
-        if ($this->paystackMethod->isAvailable() && !$this->paystackMethod->shouldUseInline()) {
-            $config['payment']['paystackStandard']['initializeUrl'] = $this->getInitializeUrl();
-            $config['payment']['paystackStandard']['enabled'] = true;
+        $config['payment']['paystackInline']['enabled'] = false;
+        if ( $this->paystackMethod->isAvailable() && $this->paystackMethod->shouldUseInline() ) {
+            $config['payment']['paystackInline']['popUrl'] = $this->getPopUrl();
+            $config['payment']['paystackInline']['publicKey'] = $this->paystackMethod->getPublicKey();
+            $config['payment']['paystackInline']['enabled'] = true;
         }
 
         return $config;
@@ -63,11 +64,10 @@ class StandardConfigProvider implements ConfigProviderInterface
     /**
      * Get initialize URL
      *
-     * @param string $code
      * @return string
      */
-    protected function getInitializeUrl()
+    protected function getPopUrl()
     {
-        return $this->urlBuilder->getUrl('paystack/initialize', ['_secure' => true]);
+        return $this->urlBuilder->getUrl('paystack/pop', ['_secure' => true]);
     }
 }
