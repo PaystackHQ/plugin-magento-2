@@ -62,7 +62,7 @@ class InlineConfigProvider implements ConfigProviderInterface
     }
 
     /**
-     * Get initialize URL
+     * Get pop URL
      *
      * @return string
      */
