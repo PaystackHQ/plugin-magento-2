@@ -6,8 +6,8 @@ use Profibro\Paystack\Controller\AbstractAction;
 class Index extends AbstractAction
 {
 
-    protected function getSessionAuthUrl(){
-        return $this->paystackSession->getTransactionUrl();
+    protected function getSessionRequestData(){
+        return $this->paystackSession->getRequestData();
     }
 
     protected function redirectToCheckout(){
@@ -16,14 +16,16 @@ class Index extends AbstractAction
 
     public function execute()
     {
-        // get Auth url from session
-        $authUrl = $this->getSessionAuthUrl();
-        if(!$authUrl){
+        // get request from session
+        $paystackRequestData = $this->getSessionRequestData();
+        // initialize transaction
+    	$url	= $this->_paystack
+                ->transaction
+                ->initialize($requestData);
+        if(!$url){
             $this->redirectToCheckout();
             return;
         }
-        $this->getResponse()->setRedirect($authUrl);
-        // unset URL after redirect
-        $this->paystackSession->unsTransactionUrl();
+        $this->getResponse()->setRedirect($url->data->authorization_url);
     }
 }

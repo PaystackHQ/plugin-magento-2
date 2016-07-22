@@ -112,24 +112,17 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
         try {
             $requestData = [
                 'amount'        => $amount * 100,
-                'currency'      => strtolower($order->getBaseCurrencyCode()),
                 'description'   => sprintf('#%s, %s', $order->getIncrementId(), $order->getCustomerEmail()),
                 'email'         => $order->getCustomerEmail(),
                 'reference'     => $order->getIncrementId() . '-' . $this->generateRandomString(),
                 'callback_url'  => $this->_urlBuilder->getUrl('paystack/verify')
             ];
 
-            $paystack = new \Yabacon\Paystack($this->_secretKey);
-            $url = $paystack
-                ->transaction
-                ->initialize($requestData);
-            
-            //throw new \Magento\Framework\Validator\Exception(__($url->data->authorization_url));
             $payment
                 ->setTransactionId($requestData['reference'])
                 ->setIsTransactionClosed(false);
 
-            $this->paystackSession->setTransactionUrl($url->data->authorization_url);
+            $this->paystackSession->setSessionRequestData($requestData);
         } catch (\Exception $e) {
             $this->debugData(['request' => $requestData, 'exception' => $e->getMessage()]);
             $this->_logger->error(__('Payment capturing error: ' . $e->getMessage()));

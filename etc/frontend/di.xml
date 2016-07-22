@@ -10,14 +10,7 @@
     <type name="Magento\Checkout\Model\CompositeConfigProvider">
         <arguments>
             <argument name="configProviders" xsi:type="array">
-                <item name="paystack_standard_config_provider" xsi:type="object">Profibro\Paystack\Model\StandardConfigProvider</item>
-            </argument>
-        </arguments>
-    </type>
-    <type name="Magento\Checkout\Model\CompositeConfigProvider">
-        <arguments>
-            <argument name="configProviders" xsi:type="array">
-                <item name="paystack_inline_config_provider" xsi:type="object">Profibro\Paystack\Model\InlineConfigProvider</item>
+                <item name="paystack_standard_config_provider" xsi:type="object">Profibro\Paystack\Model\PaystackConfigProvider</item>
             </argument>
         </arguments>
     </type>
