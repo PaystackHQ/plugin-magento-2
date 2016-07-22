@@ -25,7 +25,7 @@ class PaystackConfigProvider implements ConfigProviderInterface
     /**
      * @var UrlInterface
      */
-    protected $urlBuilder;
+    protected $_urlBuilder;
 
     /**
      * @param PaymentHelper $paymentHelper
@@ -36,7 +36,7 @@ class PaystackConfigProvider implements ConfigProviderInterface
         UrlInterface $urlBuilder
     ) {
         $this->paymentHelper = $paymentHelper;
-        $this->urlBuilder = $urlBuilder;
+        $this->_urlBuilder = $urlBuilder;
 
         $this->paystackMethod = $this->paymentHelper->getMethodInstance('profibro_paystack');
     }
@@ -72,7 +72,7 @@ class PaystackConfigProvider implements ConfigProviderInterface
      */
     protected function getInitializeUrl()
     {
-        return $this->urlBuilder->getUrl('paystack/initialize', ['_secure' => true]);
+        return $this->_urlBuilder->getUrl('paystack/initialize', ['_secure' => true]);
     }
 
     /**
@@ -82,6 +82,6 @@ class PaystackConfigProvider implements ConfigProviderInterface
      */
     protected function getPopUrl()
     {
-        return $this->urlBuilder->getUrl('paystack/pop', ['_secure' => true]);
+        return $this->_urlBuilder->getUrl('paystack/pop', ['_secure' => true]);
     }
 }
