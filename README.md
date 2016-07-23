@@ -18,11 +18,11 @@ Install
 
 3. Enter following commands to enable module:
 
-    ```bash
-    php bin/magento module:enable Profibro_Paystack --clear-static-content
-    php bin/magento setup:upgrade
-    php bin/magento setup:di:compile
-    ```
+	```bash
+	php bin/magento module:enable Profibro_Paystack --clear-static-content
+	php bin/magento setup:upgrade
+	php bin/magento setup:di:compile
+	```
 4. Enable and configure Paystack in Magento Admin under Stores/Configuration/Payment Methods
 
 Other Notes
