@@ -57,6 +57,11 @@ abstract class AbstractAction extends \Magento\Framework\App\Action\Action
 		return $this->scopeConfig->getValue('payment/profibro_paystack/secret_key', $storeScope);
 	}
 
+	public function getPublicKey() {
+		$storeScope = \Magento\Store\Model\ScopeInterface::SCOPE_STORE;
+		return $this->scopeConfig->getValue('payment/profibro_paystack/public_key', $storeScope);
+	}
+
 	protected function _getCustomer()
 	{
 		if (empty($this->customer)) {

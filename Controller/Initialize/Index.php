@@ -1,40 +1,32 @@
 <?php
 namespace Profibro\Paystack\Controller\Initialize;
 
-use Profibro\Paystack\Controller\AbstractAction;
+use Profibro\Paystack\Controller\PayAction;
 
-class Index extends AbstractAction
+class Index extends PayAction
 {
-	protected $transaction = false;
+	protected $_transaction = false;
 	
-	protected function getSessionRequestData(){
-		return $this->paystackSession->getRequestData();
-	}
-
-	protected function redirectToCheckout(){
-		$this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-	}
-
 	protected function redirectToPaystack(){
-		$this->getResponse()->setRedirect($this->transaction->data->authorization_url);
+		$this->getResponse()->setRedirect($this->_transaction->data->authorization_url);
 	}
 
 	protected function initializeTransaction(){
-		$this->transaction = $this->_paystack
+		$this->_transaction = $this->_paystack
 				->transaction
 				->initialize(
-					$this->getSessionRequestData()
+					$this->_requestData
 				);
 	}
 
 	public function execute()
 	{
-		// initialize transaction
-		$this->initializeTransaction();
-		if(!$this->transaction){
-			$this->redirectToCheckout();
-		} else {
+		if($this->sessionHasValidRequestData()){
+			// initialize transaction
+			$this->initializeTransaction();
 			$this->redirectToPaystack();
+		} else {
+			$this->redirectToCheckout();
 		}
 	}
 }
