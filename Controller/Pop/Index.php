@@ -6,49 +6,67 @@ use Magento\Sales\Model\Order;
 
 class Index extends AbstractAction
 {
+	protected $_pageString = '';
+	protected $_callbackJs = '';
 
-    public function execute()
-    {
-        $orderId = $this->checkoutSession->getLastRealOrderId();
-        if(!$orderId){
-            $this->messageManager->addError(__('Unable to start verification'));
-            $this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-        }
+	public function execute()
+	{
+		if($this->sessionHasValidRequestData()){
+			$this->buildPageString();
+			$this->printPage();
+		} else {
+			$this->redirectToCheckout();
+		}
+	}
 
-        $trxref = filter_input(INPUT_GET, 'trxref');
-        if(!$this->orderMatchesRef($orderId, $trxref)){
-            $this->messageManager->addError( __('Unable to load order.') );
-            $this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-        }
+	protected function printPage(){
+		echo $this->_pageString;
+	}
 
-        $order = $this->salesOrderFactory->create();
-        $order->loadByIncrementId($orderId);
-        $payment  = $order->getPayment();
-        // die($payment->getMethodCode());
-        // if($payment->getMethodCode() != 'profibro_paystack'){
-        //     $this->messageManager->addError(__('Requested payment method does not match with order.'));
-        //     $this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-        // }
+	protected function addScriptImports(){
+		$this->_pageString .= '<script src="https://code.jquery.com/jquery-3.1.0.slim.min.js"></script>
+			<form ><script src="https://js.paystack.co/v1/inline.js"></script></form>';
+	}
 
-        $verifyResponse = $this->_paystack->transaction->verify(['reference'=>$trxref]);
+	protected function addPaystackHandlerScript(){
+		$this->_pageString .= '<script>
+			var paystackHandler = PaystackPop.setup({
+				key: \''.addslashes(trim($this->getPublicKey())).'\',
+				email: \''.addslashes(trim($this->_requestData['email'])).'\',
+				amount: '.$this->_requestData['amount'].',
+				ref: \''.addslashes(trim($this->_requestData['reference'])).'\',
+				callback: function(response)'.$this->_callbackJs.',
+				onClose: function()'.$this->_callbackJs.'
+			});
+			</script>';
+	}
 
-        $orderTotal = round($order->getGrandTotal(), 2) * 100;
-        if(
-            ($verifyResponse->data->status === 'success')
-            && 
-            (intval($orderTotal)===intval($verifyResponse->data->amount))
-        ){
-            // successful transaction
-            $this->messageManager->addSuccess( __('Payment successful.') );
-            // update payment info and close transaction
-            $payment->setIsTransactionApproved(true)
-                    ->setIsTransactionClosed(true)
-                    ->setAdditionalInformation('RAW_JSON_RESPONSE', json_encode($verifyResponse));
-            $this->getResponse()->setRedirect($this->_url->getUrl('checkout/onepage/success'));
-        } else {
-            $this->cancelOrder($order);
-            $payment->setAdditionalInformation('RAW_JSON_RESPONSE', json_encode($verifyResponse));
-            $this->getResponse()->setRedirect($this->_url->getUrl('checkout/cart'));
-        }
-    }
+	protected function addPopScript(){
+		$this->_pageString .= '<script>
+			$( document ).ready(function() {
+				if (paystackHandler.fallback) {
+					// Handle non-support of iframes by attempting an initialize
+					window.location.href = \''.addslashes($this->_url->getUrl('*/initialize')).'\';
+				} else {
+					paystackHandler.openIframe();
+				}
+			});
+			</script>';
+	}
+
+	protected function buildCallbackJs(){
+		$this->_callbackJs = '{
+		window.location.href = \'' . addslashes($this->_requestData['callback_url']
+		. ((strpos($this->_requestData['callback_url'], '?')===FALSE) ? "?" : "&" )
+		. "trxref=".urlencode($this->_requestData['reference'])).'\';
+		}';
+	}
+
+	protected function buildPageString(){
+		$this->addScriptImports();
+		$this->buildCallbackJs();
+		$this->addPaystackHandlerScript();
+		$this->addPopScript();
+	}
+
 }
