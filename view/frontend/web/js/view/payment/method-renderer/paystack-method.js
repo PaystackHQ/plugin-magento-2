@@ -52,21 +52,7 @@ define(
             },
 
             afterPlaceOrder: function () {
-                window.location = window.checkoutConfig.payment.paystackStandard.initializeUrl;
-            },
-
-            getTrxRef: function() {
-                return _.map(window.checkoutConfig.payment.sample_gateway.transactionResults, function(value, key) {
-                    return {
-                        'value': key,
-                        'transaction_result': value
-                    }
-                });
-            },
-            
-            payWithPaystack: function(button) {
-                window.location = window.checkoutConfig.payment.paystackStandard.initializeUrl;
-                $(button).hide('fast');
+                window.location = window.checkoutConfig.payment.paystack.redirectUrl;
             },
 
             validate: function() {
