@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
-    <default>
-        <payment>
-            <profibro_paystack>
-                <active>1</active>
-                <model>Profibro\Paystack\Model\Payment</model>
-                <payment_action>authorize</payment_action>
-                <title>Credit/Debit Cards (powered by Paystack)</title>
-                <secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <public_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
-                <use_inline>1</use_inline>
-                <allowspecific>0</allowspecific>
-                <min_order_total>100</min_order_total>
-                <max_order_total>500000</max_order_total>
-            </profibro_paystack>
-        </payment>
-    </default>
+	<default>
+		<payment>
+			<profibro_paystack>
+				<active>1</active>
+				<model>Profibro\Paystack\Model\Payment</model>
+				<payment_action>authorize</payment_action>
+				<title>Credit/Debit Cards (powered by Paystack)</title>
+				<secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
+				<public_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
+				<use_inline>1</use_inline>
+				<allowspecific>0</allowspecific>
+				<min_order_total>100</min_order_total>
+				<max_order_total>500000</max_order_total>
+			</profibro_paystack>
+		</payment>
+	</default>
 </config>
