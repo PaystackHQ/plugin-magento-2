@@ -10,11 +10,11 @@ Install
 
 2. Enter following commands to install module:
 
-	```bash
-	composer config repositories.paystackinline git https://github.com/ibrahimlawal/magento2-Profibro_Paystack.git
-	composer require profibro/paystack:dev-develop
-	```
-	Wait while dependencies are updated.
+    ```bash
+    composer config repositories.profibropaystack git https://github.com/ibrahimlawal/magento2-Profibro_Paystack.git
+    composer require profibro/paystack
+    ```
+   Wait while dependencies are updated.
 
 3. Enter following commands to enable module:
 
