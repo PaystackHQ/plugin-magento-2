@@ -51,7 +51,7 @@ class Index extends PayAction
 					paystackHandler.openIframe();
 				}
 			});
-            </script>';
+			</script>';
 	}
 
 	protected function buildCallbackJs(){
