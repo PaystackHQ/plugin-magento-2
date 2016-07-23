@@ -71,6 +71,7 @@ class Index extends AbstractAction
 			$payment->setAdditionalInformation('RAW_JSON_RESPONSE', json_encode($verifyResponse));
 			$this->getResponse()->setRedirect($this->_url->getUrl('checkout/cart'));
 		}
+		$this->paystackSession->unsRequestData();
 	}
 	
 	protected function cancelOrder($order){

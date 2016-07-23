@@ -112,9 +112,9 @@ class Payment extends \Magento\Payment\Model\Method\AbstractMethod
 		try {
 			$requestData = [
 				'amount'		=> $amount * 100,
-				'description'	=> sprintf('#%s, %s', $order->getIncrementId(), $order->getCustomerEmail()),
-				'email'		 => $order->getCustomerEmail(),
-				'reference'	 => $order->getIncrementId() . '-' . $this->generateRandomString(),
+				'remarks'		=> sprintf('#%s, %s', $order->getIncrementId(), $order->getCustomerEmail()),
+				'email'			=> $order->getCustomerEmail(),
+				'reference'		=> $order->getIncrementId() . '-' . $this->generateRandomString(),
 				'callback_url'	=> $this->_urlBuilder->getUrl('paystack/verify')
 			];
 
