@@ -6,35 +6,52 @@ use Magento\Sales\Model\Order;
 
 class Index extends AbstractAction
 {
-	protected function orderMatchesRef( $orderId, $trxref){
+	protected $_orderId;
+	protected $_trxRef;
+	
+	protected function orderMatchesRef(){
 		// for a reference to match the order, the ref must start with the orderid and a dash
-		return (strpos($trxref, '' . $orderId . '-')===0);
+		return (strpos($this->_trxRef, '' . $this->_orderId . '-')===0);
+	}
+	
+	protected function fetchAndVerifyOrderIdFromSession(){
+		$this->_orderId = $this->checkoutSession->getLastRealOrderId();
+		if(!$this->_orderId){
+			$this->messageManager->addError(__('Unable to start verification'));
+			$this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
+			return false;
+		}
+		return true;
+	}
+
+	protected function fetchAndVerifyTrxRefFromGET(){
+		$this->_trxRef = filter_input(INPUT_GET, 'trxref');
+		if(!$this->orderMatchesRef()){
+			$this->messageManager->addError( __('Unable to load order.') );
+			$this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
+			return false;
+		}
+		return true;
 	}
 
 	public function execute()
 	{
-		$orderId = $this->checkoutSession->getLastRealOrderId();
-		if(!$orderId){
-			$this->messageManager->addError(__('Unable to start verification'));
-			$this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-		}
+		if(!fetchAndVerifyOrderIdFromSession())
+			return;
 
-		$trxref = filter_input(INPUT_GET, 'trxref');
-		if(!$this->orderMatchesRef($orderId, $trxref)){
-			$this->messageManager->addError( __('Unable to load order.') );
-			$this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
-		}
+		if(!fetchAndVerifyTrxRefFromGET())
+			return;
 
 		$order = $this->salesOrderFactory->create();
-		$order->loadByIncrementId($orderId);
-		$payment	= $order->getPayment();
+		$order->loadByIncrementId($this->_orderId);
+		$payment = $order->getPayment();
 		// die($payment->getMethodCode());
 		// if($payment->getMethodCode() != 'profibro_paystack'){
 		//	 $this->messageManager->addError(__('Requested payment method does not match with order.'));
 		//	 $this->getResponse()->setRedirect($this->_url->getUrl('checkout'));
 		// }
 
-		$verifyResponse = $this->_paystack->transaction->verify(['reference'=>$trxref]);
+		$verifyResponse = $this->_paystack->transaction->verify(['reference'=>$this->_trxRef]);
 
 		$orderTotal = round($order->getGrandTotal(), 2) * 100;
 		if(
