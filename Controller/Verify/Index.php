@@ -36,10 +36,10 @@ class Index extends AbstractAction
 
 	public function execute()
 	{
-		if(!fetchAndVerifyOrderIdFromSession())
+		if(!$this->fetchAndVerifyOrderIdFromSession())
 			return;
 
-		if(!fetchAndVerifyTrxRefFromGET())
+		if(!$this->fetchAndVerifyTrxRefFromGET())
 			return;
 
 		$order = $this->salesOrderFactory->create();

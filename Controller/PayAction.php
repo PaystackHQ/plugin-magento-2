@@ -14,7 +14,6 @@ abstract class PayAction extends AbstractAction
 		\Magento\AdminNotification\Model\InboxFactory $adminNotificationInboxFactory,
 		\Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
 	) {
-		$this->_requestData = $this->paystackSession->getRequestData();
 		parent::__construct(
 			$context,
 			$paystackSession,
@@ -24,6 +23,7 @@ abstract class PayAction extends AbstractAction
 			$adminNotificationInboxFactory,
 			$scopeConfig
 		);
+		$this->_requestData = $this->paystackSession->getSessionRequestData();
 	}
 
 	protected function sessionHasValidRequestData(){
