@@ -18,6 +18,9 @@ Install
 	```bash
 	composer require profibro/paystack:dev-develop
 	```
+	
+	***OR***
+	
 	Install latest release:
 	```bash
 	composer require profibro/paystack
