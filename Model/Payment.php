@@ -34,7 +34,7 @@ class Payment implements \Profibro\Paystack\Api\PaymentInterface
     /**
      * @return bool
      */
-    public function verifyPayment($reference, )
+    public function verifyPayment($reference)
     {
         try{
             $transaction_details = $this->paystack->transaction->verify([
