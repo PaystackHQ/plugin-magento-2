@@ -1,2 +1,9 @@
-commands.md
-.DS_Store
+# IDEs
+.project
+.pydevproject
+.idea
+.settings
+
+# Random files
+*~
+\#*

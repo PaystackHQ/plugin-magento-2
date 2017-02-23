@@ -8,35 +8,20 @@ Install
 
 1. Go to Magento2 root folder
 
-2. Enter following commands to install module:
+2. Enter following command to install module:
 
-	```bash
-	composer config repositories.profibropaystack git https://github.com/ibrahimlawal/magento2-Profibro_Paystack.git
-	```
+```bash
+composer require profibro/magento2-module-paystack
+```
 
-	Install dev version:
-	```bash
-	composer require profibro/paystack:dev-develop
-	```
-	
-	***OR***
-	
-	Install latest release:
-	```bash
-	composer require profibro/paystack
-	```
-	Wait while dependencies are updated.
+    Wait while dependencies are updated.
 
 3. Enter following commands to enable module:
 
-	```bash
-	php bin/magento module:enable Profibro_Paystack --clear-static-content
-	php bin/magento setup:upgrade
-	php bin/magento setup:di:compile
-	```
+```bash
+php bin/magento module:enable Profibro_Paystack --clear-static-content
+php bin/magento setup:upgrade
+php bin/magento setup:di:compile
+```
+
 4. Enable and configure Paystack in Magento Admin under Stores/Configuration/Payment Methods
-
-Other Notes
-===========
-
-**Paystack works with NGN only!** If NGN is not your base currency, you will not see this module on checkout pages.

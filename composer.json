@@ -1,17 +1,24 @@
 {
-	"name": "profibro/paystack",
-	"description": "Paystack integration for Magento 2",
-	"type": "magento2-module",
-	"license": [
-		"OSL-3.0"
-	],
-	"require": {
-		"yabacon/paystack-php": "2.*"
-	},
-	"autoload": {
-		"files": [ "registration.php" ],
-		"psr-4": {
-			"Profibro\\Paystack\\": ""
-		}
-	}
+  "name": "profibro/magento2-module-paystack",
+  "description": "Paystack integration for Magento 2",
+  "require": {
+    "php": "~5.5.*",
+    "magento/module-sales": "100.0.*",
+    "magento/module-checkout": "100.0.*",
+    "magento/module-payment": "100.0.*",
+    "magento/framework": "100.0.*",
+    "magento/magento-composer-installer": "100.0.*",
+    "yabacon/paystack-php": "2.*"
+  },
+  "type": "magento2-module",
+  "version": "1.0.0",
+  "license": [
+    "MIT"
+  ],
+  "autoload": {
+    "files": [ "registration.php" ],
+    "psr-4": {
+      "Profibro\\Paystack\\": ""
+    }
+  }
 }
