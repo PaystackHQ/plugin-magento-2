@@ -6,11 +6,9 @@ define(
         'Magento_Checkout/js/view/payment/default',
         'Magento_Checkout/js/action/place-order',
         'Magento_Checkout/js/model/payment/additional-validators',
-        'Magento_Checkout/js/model/quote',
-        'Magento_Checkout/js/model/full-screen-loader',
-        'Magento_Checkout/js/action/redirect-on-success'
+        'Magento_Checkout/js/model/quote'
     ],
-    function ($, Component, placeOrderAction, additionalValidators, quote, fullScreenLoader, redirectOnSuccessAction) {
+    function ($, Component, placeOrderAction, additionalValidators, quote, fullScreenLoader) {
         'use strict';
 
         return Component.extend({
@@ -18,8 +16,6 @@ define(
                 template: 'Profibro_Paystack/payment/form',
                 customObserverName: null
             },
-
-            redirectAfterPlaceOrder: true,
 
             initialize: function () {
                 this._super();
@@ -37,6 +33,10 @@ define(
                     'method': this.item.method,
                     'additional_data': {}
                 };
+            },
+
+            isActive: function() {
+                return true;
             },
 
             /**
@@ -108,17 +108,12 @@ define(
 
                 if (this.validate() && additionalValidators.validate()) {
                     this.isPlaceOrderActionAllowed(false);
-                    //placeOrder = placeOrderAction(this.getData(), this.redirectAfterPlaceOrder, this.messageContainer);
                     placeOrder = placeOrderAction(this.getData(), this.messageContainer);
                     $.when(placeOrder).fail(function () {
                         self.isPlaceOrderActionAllowed(true);
                     }).done(
                         function () {
                             self.afterPlaceOrder();
-
-                            if (self.redirectAfterPlaceOrder) {
-                                redirectOnSuccessAction.execute();
-                            }
                         }
                     );
 
