@@ -85,7 +85,7 @@ define(
                   callback: function(response){
                         $.ajax({
                             method: 'GET',
-                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + reference,
+                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference,
                         }).success(function () {
                             _this.processPayment();
                         });
