@@ -9,7 +9,7 @@
     "yabacon/paystack-php": "2.*"
   },
   "type": "magento2-module",
-  "version": "0.9.9",
+  "version": "0.9.10",
   "license": [
     "MIT"
   ],
