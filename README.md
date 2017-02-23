@@ -14,9 +14,9 @@ Install
 composer require profibro/magento2-module-paystack
 ```
 
-    Wait while dependencies are updated.
+3. Wait while dependencies are updated.
 
-3. Enter following commands to enable module:
+4. Enter following commands to enable module:
 
 ```bash
 php bin/magento module:enable Profibro_Paystack --clear-static-content
@@ -24,4 +24,4 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
-4. Enable and configure Paystack in Magento Admin under Stores/Configuration/Payment Methods
+5. Enable and configure `Paystack` in *Magento Admin* under `Stores/Configuration/Payment` Methods
