@@ -2,7 +2,7 @@
   "name": "profibro/magento2-module-paystack",
   "description": "Paystack integration for Magento 2",
   "require": {
-    "php": "~5.5",
+    "php": "~5.5||^7.0",
     "magento/module-sales": "100.0.*",
     "magento/module-checkout": "100.0.*",
     "magento/module-payment": "100.0.*",
@@ -11,7 +11,7 @@
     "yabacon/paystack-php": "2.*"
   },
   "type": "magento2-module",
-  "version": "0.9.4-beta",
+  "version": "0.9.5-beta",
   "license": [
     "MIT"
   ],
