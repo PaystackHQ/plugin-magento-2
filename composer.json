@@ -6,11 +6,10 @@
     "magento/module-checkout": "100.0.*",
     "magento/module-payment": "100.0.*",
     "magento/framework": "100.0.*",
-    "magento/magento-composer-installer": "100.0.*",
     "yabacon/paystack-php": "2.*"
   },
   "type": "magento2-module",
-  "version": "0.9.7-beta",
+  "version": "0.9.8",
   "license": [
     "MIT"
   ],
