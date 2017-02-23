@@ -89,14 +89,6 @@ define(
                         }).success(function () {
                             _this.processPayment();
                         });
-                  },
-                  onClose: function(){
-                      $.ajax({
-                          method: 'GET',
-                          url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + reference,
-                      }).success(function () {
-                          _this.processPayment();
-                      });
                   }
                 });
                 handler.openIframe();
