@@ -14,9 +14,7 @@ class Payment implements \Profibro\Paystack\Api\PaymentInterface
     protected $checkoutSession;
 
     public function __construct(
-        PaymentHelper $paymentHelper,
-        \Magento\Sales\Model\OrderFactory $salesOrderFactory,
-        \Magento\Checkout\Model\Session $checkoutSession
+        PaymentHelper $paymentHelper
     )
     {
         $this->config = $paymentHelper->getMethodInstance(self::CODE);
@@ -27,31 +25,33 @@ class Payment implements \Profibro\Paystack\Api\PaymentInterface
         }
 
         $this->paystack = new Paystack($secretKey);
-        $this->checkoutSession = $checkoutSession;
-        $this->salesOrderFactory = $salesOrderFactory;
     }
 
     /**
      * @return bool
      */
-    public function verifyPayment($reference)
+    public function verifyPayment($ref_quote)
     {
+        // we are appending quoteid
+        $ref = explode('_-~-_', $ref_quote);
+        $reference = $ref[0];
+        $quoteId = $ref[1];
         try{
             $transaction_details = $this->paystack->transaction->verify([
                 'reference' => $reference
             ]);
-            if($transaction_details->data->status === 'success'){
-                $_orderId = $this->checkoutSession->getLastRealOrderId();
-                $order = $this->salesOrderFactory->create();
-                $order->loadByIncrementId($_orderId);
-                $orderTotal = round($order->getGrandTotal(), 2) * 100;
-                if(intval($orderTotal)===intval($verifyResponse->data->amount)){
-                    return true;
-                }
+            if($transaction_details->data->metadata->quoteId === $quoteId){
+                return json_encode($transaction_details);
             }
         } catch(Exception $e) {
-            //
+            return json_encode([
+                'status'=>0,
+                'message'=>$e->getMessage()
+            ]);
         }
-        return false;
+        return json_encode([
+            'status'=>0,
+            'message'=>"quoteId doesn't match transaction"
+        ]);
     }
 }
