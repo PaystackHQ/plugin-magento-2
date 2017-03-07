@@ -57,14 +57,21 @@ define(
                 }
 
                 var _this = this;
+                _this.isPlaceOrderActionAllowed(false);
                 var handler = PaystackPop.setup({
                   key: profibroPaystackConfiguration.public_key,
                   email: paymentData.email,
-                  amount: checkoutConfig.quoteData.grand_total * 100,
+                  amount: checkoutConfig.totalsData.grand_total * 100,
                   phone: paymentData.telephone,
-                  currency: checkoutConfig.quoteData.store_currency_code,
+                  currency: checkoutConfig.totalsData.quote_currency_code,
                   metadata: {
+                     quoteId: checkoutConfig.quoteId,
                      custom_fields: [
+                        {
+                         display_name: "QuoteId",
+                         variable_name: "quote id",
+                         value: checkoutConfig.quoteId
+                        },
                         {
                             display_name: "Address",
                             variable_name: "address",
@@ -85,9 +92,18 @@ define(
                   callback: function(response){
                         $.ajax({
                             method: 'GET',
-                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference,
-                        }).success(function () {
-                            _this.processPayment();
+                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + checkoutConfig.quoteId,
+                        }).success(function (data) {
+                            if(data.status){
+                                if(data.data.status === 'success'){
+                                    _this.processPayment();
+                                    return;
+                                }
+                            }
+                            _this.isPlaceOrderActionAllowed(true);
+                            _this.messageContainer.addErrorMessage({
+                                message: "Error, please try again"
+                            });
                         });
                   }
                 });
@@ -111,7 +127,6 @@ define(
 
                     return true;
                 }
-
 
                 return false;
             },
