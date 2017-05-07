@@ -103,7 +103,7 @@ define(
                             
                             data = JSON.parse(data);
                             
-                            if (data.status === true) {
+                            if (data.status) {
                                 if (data.data.status === 'success') {
                                     _this.processPayment();
                                     return;
