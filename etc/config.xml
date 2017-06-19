@@ -13,7 +13,7 @@
                 <currency>NGN</currency>
                 <can_use_checkout>1</can_use_checkout>
                 <is_gateway>1</is_gateway>
-                <sort_order>1</sort_order>
+                <sort_order>400</sort_order>
                 <allowspecific>0</allowspecific>
                 <min_order_total>100</min_order_total>
                 <max_order_total>500000</max_order_total>
