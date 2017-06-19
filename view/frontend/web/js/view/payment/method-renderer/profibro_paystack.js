@@ -6,9 +6,11 @@ define(
         'Magento_Checkout/js/view/payment/default',
         'Magento_Checkout/js/action/place-order',
         'Magento_Checkout/js/model/payment/additional-validators',
-        'Magento_Checkout/js/model/quote'
+        'Magento_Checkout/js/model/quote',
+        'Magento_Checkout/js/model/full-screen-loader',
+        'Magento_Checkout/js/action/redirect-on-success'
     ],
-    function ($, Component, placeOrderAction, additionalValidators, quote, fullScreenLoader) {
+    function ($, Component, placeOrderAction, additionalValidators, quote, fullScreenLoader, redirectOnSuccessAction) {
         'use strict';
 
         return Component.extend({
@@ -16,6 +18,8 @@ define(
                 template: 'Profibro_Paystack/payment/form',
                 customObserverName: null
             },
+            
+            redirectAfterPlaceOrder : true,
 
             initialize: function () {
                 this._super();
@@ -55,6 +59,8 @@ define(
                     var storageData = JSON.parse(localStorage.getItem('mage-cache-storage'))['checkout-data'];
                     paymentData.email = storageData.validatedEmailValue;
                 }
+                
+                var quoteId = checkoutConfig.quoteItemData[0].quote_id;
 
                 var _this = this;
                 _this.isPlaceOrderActionAllowed(false);
@@ -65,12 +71,12 @@ define(
                   phone: paymentData.telephone,
                   currency: checkoutConfig.totalsData.quote_currency_code,
                   metadata: {
-                     quoteId: checkoutConfig.quoteId,
+                     quoteId: quoteId,
                      custom_fields: [
                         {
                          display_name: "QuoteId",
                          variable_name: "quote id",
-                         value: checkoutConfig.quoteId
+                         value: quoteId
                         },
                         {
                             display_name: "Address",
@@ -86,24 +92,29 @@ define(
                             display_name: "City",
                             variable_name: "city",
                             value: paymentData.city + ', ' + paymentData.countryId
-                        },
+                        }
                      ]
                   },
                   callback: function(response){
                         $.ajax({
                             method: 'GET',
-                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + checkoutConfig.quoteId,
+                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId
                         }).success(function (data) {
-                            if(data.status){
-                                if(data.data.status === 'success'){
+                            
+                            data = JSON.parse(data);
+                            
+                            if (data.status) {
+                                if (data.data.status === 'success') {
                                     _this.processPayment();
                                     return;
                                 }
                             }
+                            
                             _this.isPlaceOrderActionAllowed(true);
                             _this.messageContainer.addErrorMessage({
                                 message: "Error, please try again"
                             });
+                                
                         });
                   }
                 });
@@ -122,6 +133,10 @@ define(
                     }).done(
                         function () {
                             self.afterPlaceOrder();
+
+                            if (self.redirectAfterPlaceOrder) {
+                                redirectOnSuccessAction.execute();
+                            }
                         }
                     );
 
@@ -129,8 +144,7 @@ define(
                 }
 
                 return false;
-            },
+            }
         });
     }
-)
-;
+);

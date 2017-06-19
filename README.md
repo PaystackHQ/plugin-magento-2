@@ -7,6 +7,12 @@ magento2-Profibro_Paystack
 
 Paystack payment gateway Magento2 extension
 
+TODO
+====
+
+* Make order status after successful payment configurable, instead of stereotyping.
+
+
 Install
 =======
 
