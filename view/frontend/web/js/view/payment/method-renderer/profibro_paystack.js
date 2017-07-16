@@ -67,7 +67,7 @@ define(
                 var handler = PaystackPop.setup({
                   key: profibroPaystackConfiguration.public_key,
                   email: paymentData.email,
-                  amount: checkoutConfig.totalsData.grand_total * 100,
+                  amount: Math.ceil(quote.totals().grand_total * 100), // get order total from quote for an accurate... quote
                   phone: paymentData.telephone,
                   currency: checkoutConfig.totalsData.quote_currency_code,
                   metadata: {
