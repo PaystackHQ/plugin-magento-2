@@ -19,7 +19,7 @@ define(
                 customObserverName: null
             },
             
-            redirectAfterPlaceOrder : true,
+            redirectAfterPlaceOrder : false,
 
             initialize: function () {
                 this._super();
@@ -46,7 +46,7 @@ define(
             /**
              * @override
              */
-            placeOrder: function () {
+            afterPlaceOrder: function () {
                 var checkoutConfig = window.checkoutConfig;
                 var paymentData = quote.billingAddress();
                 var profibroPaystackConfiguration = checkoutConfig.payment.profibro_paystack;
@@ -105,7 +105,8 @@ define(
                             
                             if (data.status) {
                                 if (data.data.status === 'success') {
-                                    _this.processPayment();
+                                    // redirect to success page after
+                                    redirectOnSuccessAction.execute();
                                     return;
                                 }
                             }
@@ -119,31 +120,6 @@ define(
                   }
                 });
                 handler.openIframe();
-            },
-
-            processPayment: function () {
-                var self = this,
-                    placeOrder;
-
-                if (this.validate() && additionalValidators.validate()) {
-                    this.isPlaceOrderActionAllowed(false);
-                    placeOrder = placeOrderAction(this.getData(), this.messageContainer);
-                    $.when(placeOrder).fail(function () {
-                        self.isPlaceOrderActionAllowed(true);
-                    }).done(
-                        function () {
-                            self.afterPlaceOrder();
-
-                            if (self.redirectAfterPlaceOrder) {
-                                redirectOnSuccessAction.execute();
-                            }
-                        }
-                    );
-
-                    return true;
-                }
-
-                return false;
             }
         });
     }
