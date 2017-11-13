@@ -40,12 +40,10 @@ None Errors
 * Fail to redirect to success page after successful payment
 
 Sometimes after receiving payment for an order you get an error like: `Class Yabacon\Paystack not found` 
-and magento doesn't redirect to the `success` page
+and magento doesn't redirect to the `success` page.
 
-Fix
-===
-
-* Run the following command:
+** Fix:
+Run the following command:
 
 ```bash
 composer require yabacon/paystack-php
