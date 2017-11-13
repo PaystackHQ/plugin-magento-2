@@ -16,7 +16,7 @@ class AfterOrderObserver implements ObserverInterface
 
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
-    //Observer execution code...
+        //Observer execution code...
         $order = $observer->getEvent()->getOrder();
         $order->setStatus(Order::STATE_PROCESSING);
         $order->save();

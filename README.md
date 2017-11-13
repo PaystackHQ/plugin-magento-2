@@ -34,6 +34,23 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
+None Errors
+===========
+
+Sometimes after receiving payment for an order you get an error like: `Class Yabacon\Paystack not found` 
+and magento doesn't redirect to the `success` page
+
+Fix
+===
+
+* Run the following command:
+
+```bash
+composer require yabacon/paystack-php
+```
+
+
+
 * Enable and configure `Paystack` in *Magento Admin* under `Stores/Configuration/Payment` Methods
 
 [ico-version]: https://img.shields.io/packagist/v/profibro/magento2-module-paystack.svg?style=flat-square
