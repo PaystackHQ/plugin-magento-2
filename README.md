@@ -34,8 +34,8 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
-None Errors
-===========
+Known Errors
+============
 
 * Fail to redirect to success page after successful payment
 
