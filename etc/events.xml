@@ -3,4 +3,7 @@
     <event name="sales_order_place_after">
         <observer name="AfterOrderObserver" instance="Profibro\Paystack\Observer\AfterOrderObserver" />
     </event>
+    <event name="payment_verify_after">
+        <observer name="AfterPaymentVerifyObserver" instance="Profibro\Paystack\Observer\AfterPaymentVerifyObserver" />
+    </event>
 </config>
