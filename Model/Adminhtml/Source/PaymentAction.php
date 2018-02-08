@@ -1,5 +1,5 @@
 <?php
-namespace Profibro\Paystack\Model\Adminhtml\Source;
+namespace Paystack\Paystack\Model\Adminhtml\Source;
 
 use Magento\Payment\Model\Method\AbstractMethod;
 

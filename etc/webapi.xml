@@ -2,7 +2,7 @@
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
     <!-- Verify Payment -->
     <route url="/paystack/verify/:reference" method="GET">
-        <service class="Profibro\Paystack\Api\PaymentInterface" method="verifyPayment"/>
+        <service class="Paystack\Paystack\Api\PaymentInterface" method="verifyPayment"/>
         <resources>
             <resource ref="anonymous" />
         </resources>

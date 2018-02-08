@@ -1,5 +1,5 @@
 <?php
-namespace Profibro\Paystack\Model\Ui;
+namespace Paystack\Paystack\Model\Ui;
 
 use Magento\Checkout\Model\ConfigProviderInterface;
 use Magento\Payment\Helper\Data as PaymentHelper;

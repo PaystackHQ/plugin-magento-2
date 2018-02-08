@@ -49,7 +49,7 @@ define(
             afterPlaceOrder: function () {
                 var checkoutConfig = window.checkoutConfig;
                 var paymentData = quote.billingAddress();
-                var profibroPaystackConfiguration = checkoutConfig.payment.profibro_paystack;
+                var paystackConfiguration = checkoutConfig.payment.profibro_paystack;
 
                 if (checkoutConfig.isCustomerLoggedIn) {
                     var customerData = checkoutConfig.customerData;
@@ -64,7 +64,7 @@ define(
                 var _this = this;
                 _this.isPlaceOrderActionAllowed(false);
                 var handler = PaystackPop.setup({
-                  key: profibroPaystackConfiguration.public_key,
+                  key: paystackConfiguration.public_key,
                   email: paymentData.email,
                   amount: Math.ceil(quote.totals().grand_total * 100), // get order total from quote for an accurate... quote
                   phone: paymentData.telephone,
@@ -97,7 +97,7 @@ define(
                   callback: function (response) {
                         $.ajax({
                             method: 'GET',
-                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId
+                            url: paystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId
                         }).success(function (data) {
                             
                             data = JSON.parse(data);

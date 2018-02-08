@@ -2,7 +2,7 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <payment>
-            <profibro_paystack>
+            <pstk_paystack>
                 <debug>1</debug>
                 <active>0</active>
                 <test_mode>1</test_mode>
@@ -17,7 +17,7 @@
                 <allowspecific>0</allowspecific>
                 <min_order_total>100</min_order_total>
                 <max_order_total>500000</max_order_total>
-            </profibro_paystack>
+            </pstk_paystack>
         </payment>
     </default>
 </config>

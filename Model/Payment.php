@@ -1,12 +1,12 @@
 <?php
 
-namespace Profibro\Paystack\Model;
+namespace Paystack\Paystack\Model;
 
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Yabacon\Paystack;
 use Exception;
 
-class Payment implements \Profibro\Paystack\Api\PaymentInterface
+class Payment implements \Paystack\Paystack\Api\PaymentInterface
 {
     const CODE = 'profibro_paystack';
 

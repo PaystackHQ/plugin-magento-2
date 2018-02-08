@@ -7,7 +7,7 @@
             </argument>
         </arguments>
     </type>
-    <type name="Profibro\Paystack\Block\Info">
+    <type name="Paystack\Paystack\Block\Info">
         <arguments>
             <argument name="data" xsi:type="array">
                 <item xsi:type="string" name="is_secure_mode">1</item>

@@ -1,6 +1,6 @@
 <?php
 
-namespace Profibro\Paystack\Observer;
+namespace Paystack\Paystack\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
