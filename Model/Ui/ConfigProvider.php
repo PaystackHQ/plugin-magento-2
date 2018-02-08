@@ -14,10 +14,7 @@ final class ConfigProvider implements ConfigProviderInterface
 
     protected $method;
 
-    public function __construct(
-        PaymentHelper $paymentHelper,
-        Store $store
-    )
+    public function __construct(PaymentHelper $paymentHelper, Store $store)
     {
         $this->method = $paymentHelper->getMethodInstance(self::CODE);
         $this->store = $store;

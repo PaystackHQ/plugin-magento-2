@@ -39,7 +39,7 @@ define(
                 };
             },
 
-            isActive: function() {
+            isActive: function () {
                 return true;
             },
 
@@ -54,7 +54,6 @@ define(
                 if (checkoutConfig.isCustomerLoggedIn) {
                     var customerData = checkoutConfig.customerData;
                     paymentData.email = customerData.email;
-
                 } else {
                     var storageData = JSON.parse(localStorage.getItem('mage-cache-storage'))['checkout-data'];
                     paymentData.email = storageData.validatedEmailValue;
@@ -95,7 +94,7 @@ define(
                         }
                      ]
                   },
-                  callback: function(response){
+                  callback: function (response) {
                         $.ajax({
                             method: 'GET',
                             url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId

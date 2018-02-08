@@ -43,17 +43,17 @@ class Payment implements \Profibro\Paystack\Api\PaymentInterface
         $ref = explode('_-~-_', $ref_quote);
         $reference = $ref[0];
         $quoteId = $ref[1];
-        try{
+        try {
             $transaction_details = $this->paystack->transaction->verify([
                 'reference' => $reference
             ]);
-            if($transaction_details->data->metadata->quoteId === $quoteId){
+            if ($transaction_details->data->metadata->quoteId === $quoteId) {
                 // dispatch the `payment_verify_after` event to update the order status
                 $this->eventManager->dispatch('payment_verify_after');
                 
                 return json_encode($transaction_details);
             }
-        } catch(Exception $e) {
+        } catch (Exception $e) {
             return json_encode([
                 'status'=>0,
                 'message'=>$e->getMessage()

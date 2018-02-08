@@ -4,6 +4,10 @@
 .idea
 .settings
 
+# Composer
+composer.phar
+/vendor/
+
 # Random files
 *~
 \#*
