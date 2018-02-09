@@ -8,7 +8,7 @@ use Exception;
 
 class Payment implements \Paystack\Paystack\Api\PaymentInterface
 {
-    const CODE = 'profibro_paystack';
+    const CODE = 'paystack';
 
     protected $config;
     

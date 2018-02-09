@@ -12,8 +12,8 @@ define(
         'use strict';
         rendererList.push(
             {
-                type: 'profibro_paystack',
-                component: 'Profibro_Paystack/js/view/payment/method-renderer/profibro_paystack'
+                type: 'paystack',
+                component: 'Paystack_Paystack/js/view/payment/method-renderer/paystack'
             }
         );
         /** Add view logic here if needed */

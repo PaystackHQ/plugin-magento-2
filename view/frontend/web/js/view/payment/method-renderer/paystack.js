@@ -15,7 +15,7 @@ define(
 
         return Component.extend({
             defaults: {
-                template: 'Profibro_Paystack/payment/form',
+                template: 'Paystack_Paystack/payment/form',
                 customObserverName: null
             },
             
@@ -23,13 +23,13 @@ define(
 
             initialize: function () {
                 this._super();
-                // Add Profibro Gateway script to head
+                // Add Paystack Gateway script to head
                 $("head").append('<script src="https://js.paystack.co/v1/inline.js">');
                 return this;
             },
 
             getCode: function () {
-                return 'profibro_paystack';
+                return 'paystack';
             },
 
             getData: function () {
@@ -49,7 +49,7 @@ define(
             afterPlaceOrder: function () {
                 var checkoutConfig = window.checkoutConfig;
                 var paymentData = quote.billingAddress();
-                var paystackConfiguration = checkoutConfig.payment.profibro_paystack;
+                var paystackConfiguration = checkoutConfig.payment.paystack;
 
                 if (checkoutConfig.isCustomerLoggedIn) {
                     var customerData = checkoutConfig.customerData;

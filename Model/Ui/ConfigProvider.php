@@ -10,7 +10,7 @@ use Magento\Store\Model\Store as Store;
  */
 final class ConfigProvider implements ConfigProviderInterface
 {
-    const CODE = 'profibro_paystack';
+    const CODE = 'paystack';
 
     protected $method;
 
