@@ -29,7 +29,7 @@ define(
             },
 
             getCode: function () {
-                return 'paystack';
+                return 'pstk_paystack';
             },
 
             getData: function () {
@@ -49,7 +49,7 @@ define(
             afterPlaceOrder: function () {
                 var checkoutConfig = window.checkoutConfig;
                 var paymentData = quote.billingAddress();
-                var paystackConfiguration = checkoutConfig.payment.paystack;
+                var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
 
                 if (checkoutConfig.isCustomerLoggedIn) {
                     var customerData = checkoutConfig.customerData;

@@ -3,7 +3,7 @@
     <type name="Magento\Checkout\Model\CompositeConfigProvider">
         <arguments>
             <argument name="configProviders" xsi:type="array">
-                <item name="paystack_config_provider" xsi:type="object">Paystack\Paystack\Model\Ui\ConfigProvider</item>
+                <item name="pstk_paystack_config_provider" xsi:type="object">Paystack\Paystack\Model\Ui\ConfigProvider</item>
             </argument>
         </arguments>
     </type>

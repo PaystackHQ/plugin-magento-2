@@ -8,7 +8,7 @@ use Exception;
 
 class Payment implements \Paystack\Paystack\Api\PaymentInterface
 {
-    const CODE = 'paystack';
+    const CODE = 'pstk_paystack';
 
     protected $config;
     

@@ -17,10 +17,10 @@
                                                         <item name="renders" xsi:type="array">
                                                             <!-- merge payment method renders here -->
                                                             <item name="children" xsi:type="array">
-                                                                <item name="paystack" xsi:type="array">
-                                                                    <item name="component" xsi:type="string">Paystack_Paystack/js/view/payment/paystack</item>
+                                                                <item name="pstk_paystack" xsi:type="array">
+                                                                    <item name="component" xsi:type="string">Paystack_Paystack/js/view/payment/pstk_paystack</item>
                                                                     <item name="methods" xsi:type="array">
-                                                                        <item name="paystack" xsi:type="array">
+                                                                        <item name="pstk_paystack" xsi:type="array">
                                                                             <item name="isBillingAddressRequired" xsi:type="boolean">true</item>
                                                                         </item>
                                                                     </item>
