@@ -1,9 +1,9 @@
 <?php
-namespace Profibro\Paystack\Block;
+namespace Paystack\Paystack\Block;
 
 use Magento\Framework\Phrase;
 use Magento\Payment\Block\ConfigurableInfo;
-use Profibro\Paystack\Gateway\Response\FraudHandler;
+use Paystack\Paystack\Gateway\Response\FraudHandler;
 
 class Info extends ConfigurableInfo
 {

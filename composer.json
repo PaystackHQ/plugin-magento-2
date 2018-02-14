@@ -1,5 +1,5 @@
 {
-  "name": "profibro/magento2-module-paystack",
+  "name": "pstk/paystack-magento2-module",
   "description": "Paystack integration for Magento 2",
   "require": {
     "yabacon/paystack-php": "2.*"
@@ -12,7 +12,7 @@
   "autoload": {
     "files": [ "registration.php" ],
     "psr-4": {
-      "Profibro\\Paystack\\": ""
+      "Paystack\\Paystack\\": ""
     }
   }
 }

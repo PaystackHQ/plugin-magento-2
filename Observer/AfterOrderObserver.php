@@ -1,19 +1,13 @@
 <?php
 
-namespace Profibro\Paystack\Observer;
-
+namespace Paystack\Paystack\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
-use Profibro\Paystack\Model\Payment;
+use Paystack\Paystack\Model\Payment;
 
 class AfterOrderObserver implements ObserverInterface
 {
-
-    public function __construct()
-    {
-
-    }
 
     public function execute(\Magento\Framework\Event\Observer $observer)
     {

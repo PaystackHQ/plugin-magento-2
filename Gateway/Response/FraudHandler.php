@@ -1,5 +1,5 @@
 <?php
-namespace Profibro\Paystack\Gateway\Response;
+namespace Paystack\Paystack\Gateway\Response;
 
 use Magento\Payment\Gateway\Data\PaymentDataObjectInterface;
 use Magento\Payment\Gateway\Response\HandlerInterface;
