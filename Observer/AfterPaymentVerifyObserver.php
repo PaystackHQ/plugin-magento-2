@@ -1,7 +1,6 @@
 <?php
 
-namespace Profibro\Paystack\Observer;
-
+namespace Paystack\Paystack\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
@@ -39,7 +38,7 @@ class AfterPaymentVerifyObserver implements ObserverInterface
     
     /**
      * Loads the order based on the last real order
-     * @return boolean | 
+     * @return boolean
      */
     private function getOrder()
     {

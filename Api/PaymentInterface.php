@@ -1,5 +1,5 @@
 <?php
-namespace Profibro\Paystack\Api;
+namespace Paystack\Paystack\Api;
 
 interface PaymentInterface
 {

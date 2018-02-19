@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
     <event name="sales_order_place_after">
-        <observer name="AfterOrderObserver" instance="Profibro\Paystack\Observer\AfterOrderObserver" />
+        <observer name="AfterOrderObserver" instance="Paystack\Paystack\Observer\AfterOrderObserver" />
     </event>
     <event name="payment_verify_after">
-        <observer name="AfterPaymentVerifyObserver" instance="Profibro\Paystack\Observer\AfterPaymentVerifyObserver" />
+        <observer name="AfterPaymentVerifyObserver" instance="Paystack\Paystack\Observer\AfterPaymentVerifyObserver" />
     </event>
 </config>

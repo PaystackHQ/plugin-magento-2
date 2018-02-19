@@ -15,7 +15,7 @@ define(
 
         return Component.extend({
             defaults: {
-                template: 'Profibro_Paystack/payment/form',
+                template: 'Paystack_Paystack/payment/form',
                 customObserverName: null
             },
             
@@ -23,13 +23,13 @@ define(
 
             initialize: function () {
                 this._super();
-                // Add Profibro Gateway script to head
+                // Add Paystack Gateway script to head
                 $("head").append('<script src="https://js.paystack.co/v1/inline.js">');
                 return this;
             },
 
             getCode: function () {
-                return 'profibro_paystack';
+                return 'pstk_paystack';
             },
 
             getData: function () {
@@ -39,7 +39,7 @@ define(
                 };
             },
 
-            isActive: function() {
+            isActive: function () {
                 return true;
             },
 
@@ -49,12 +49,11 @@ define(
             afterPlaceOrder: function () {
                 var checkoutConfig = window.checkoutConfig;
                 var paymentData = quote.billingAddress();
-                var profibroPaystackConfiguration = checkoutConfig.payment.profibro_paystack;
+                var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
 
                 if (checkoutConfig.isCustomerLoggedIn) {
                     var customerData = checkoutConfig.customerData;
                     paymentData.email = customerData.email;
-
                 } else {
                     var storageData = JSON.parse(localStorage.getItem('mage-cache-storage'))['checkout-data'];
                     paymentData.email = storageData.validatedEmailValue;
@@ -65,7 +64,7 @@ define(
                 var _this = this;
                 _this.isPlaceOrderActionAllowed(false);
                 var handler = PaystackPop.setup({
-                  key: profibroPaystackConfiguration.public_key,
+                  key: paystackConfiguration.public_key,
                   email: paymentData.email,
                   amount: Math.ceil(quote.totals().grand_total * 100), // get order total from quote for an accurate... quote
                   phone: paymentData.telephone,
@@ -95,10 +94,10 @@ define(
                         }
                      ]
                   },
-                  callback: function(response){
+                  callback: function (response) {
                         $.ajax({
                             method: 'GET',
-                            url: profibroPaystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId
+                            url: paystackConfiguration.api_url + 'paystack/verify/' + response.reference + '_-~-_' + quoteId
                         }).success(function (data) {
                             
                             data = JSON.parse(data);
