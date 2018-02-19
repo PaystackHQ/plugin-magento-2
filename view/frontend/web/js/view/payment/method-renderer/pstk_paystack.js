@@ -15,7 +15,7 @@ define(
 
         return Component.extend({
             defaults: {
-                template: 'Paystack_Paystack/payment/form',
+                template: 'Pstk_Paystack/payment/form',
                 customObserverName: null
             },
             

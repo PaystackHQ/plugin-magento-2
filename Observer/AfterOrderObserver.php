@@ -1,10 +1,10 @@
 <?php
 
-namespace Paystack\Paystack\Observer;
+namespace Pstk\Paystack\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
-use Paystack\Paystack\Model\Payment;
+use Pstk\Paystack\Model\Payment;
 
 class AfterOrderObserver implements ObserverInterface
 {

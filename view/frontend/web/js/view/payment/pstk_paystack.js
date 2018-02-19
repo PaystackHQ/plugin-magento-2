@@ -13,7 +13,7 @@ define(
         rendererList.push(
             {
                 type: 'paystack',
-                component: 'Paystack_Paystack/js/view/payment/method-renderer/pstk_paystack'
+                component: 'Pstk_Paystack/js/view/payment/method-renderer/pstk_paystack'
             }
         );
         /** Add view logic here if needed */
