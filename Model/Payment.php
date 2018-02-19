@@ -1,12 +1,12 @@
 <?php
 
-namespace Paystack\Paystack\Model;
+namespace Pstk\Paystack\Model;
 
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Yabacon\Paystack;
 use Exception;
 
-class Payment implements \Paystack\Paystack\Api\PaymentInterface
+class Payment implements \Pstk\Paystack\Api\PaymentInterface
 {
     const CODE = 'pstk_paystack';
 

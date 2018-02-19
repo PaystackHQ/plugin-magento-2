@@ -3,11 +3,11 @@
     <type name="Magento\Checkout\Model\CompositeConfigProvider">
         <arguments>
             <argument name="configProviders" xsi:type="array">
-                <item name="pstk_paystack_config_provider" xsi:type="object">Paystack\Paystack\Model\Ui\ConfigProvider</item>
+                <item name="pstk_paystack_config_provider" xsi:type="object">Pstk\Paystack\Model\Ui\ConfigProvider</item>
             </argument>
         </arguments>
     </type>
-    <type name="Paystack\Paystack\Block\Info">
+    <type name="Pstk\Paystack\Block\Info">
         <arguments>
             <argument name="data" xsi:type="array">
                 <item xsi:type="string" name="is_secure_mode">1</item>

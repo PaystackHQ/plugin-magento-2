@@ -3,9 +3,9 @@
     <!-- Payment Method Facade configuration -->
     <virtualType name="PaystackFacade" type="Magento\Payment\Model\Method\Adapter">
         <arguments>
-            <argument name="code" xsi:type="const">\Paystack\Paystack\Model\Ui\ConfigProvider::CODE</argument>
+            <argument name="code" xsi:type="const">\Pstk\Paystack\Model\Ui\ConfigProvider::CODE</argument>
             <argument name="formBlockType" xsi:type="string">Magento\Payment\Block\Form</argument>
-            <argument name="infoBlockType" xsi:type="string">Paystack\Paystack\Block\Info</argument>
+            <argument name="infoBlockType" xsi:type="string">Pstk\Paystack\Block\Info</argument>
             <argument name="valueHandlerPool" xsi:type="object">PaystackValueHandlerPool</argument>
         </arguments>
     </virtualType>
@@ -13,7 +13,7 @@
     <!-- Configuration reader -->
     <virtualType name="PaystackConfig" type="Magento\Payment\Gateway\Config\Config">
         <arguments>
-            <argument name="methodCode" xsi:type="const">\Paystack\Paystack\Model\Ui\ConfigProvider::CODE</argument>
+            <argument name="methodCode" xsi:type="const">\Pstk\Paystack\Model\Ui\ConfigProvider::CODE</argument>
         </arguments>
     </virtualType>
 
@@ -31,11 +31,11 @@
         </arguments>
     </virtualType>
 
-    <type name="Paystack\Paystack\Block\Info">
+    <type name="Pstk\Paystack\Block\Info">
         <arguments>
             <argument name="config" xsi:type="object">PaystackConfig</argument>
         </arguments>
     </type>
     <!-- API -->
-    <preference for="Paystack\Paystack\Api\PaymentInterface" type="Paystack\Paystack\Model\Payment"/>
+    <preference for="Pstk\Paystack\Api\PaymentInterface" type="Pstk\Paystack\Model\Payment"/>
 </config>

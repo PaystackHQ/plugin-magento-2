@@ -1,5 +1,5 @@
 <?php
-namespace Paystack\Paystack\Gateway\Response;
+namespace Pstk\Paystack\Gateway\Response;
 
 use Magento\Payment\Gateway\Data\PaymentDataObjectInterface;
 use Magento\Payment\Gateway\Response\HandlerInterface;

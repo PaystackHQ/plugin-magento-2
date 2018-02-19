@@ -1,5 +1,5 @@
 <?php
-namespace Paystack\Paystack\Api;
+namespace Pstk\Paystack\Api;
 
 interface PaymentInterface
 {

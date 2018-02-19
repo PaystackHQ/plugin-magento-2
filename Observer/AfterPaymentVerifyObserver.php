@@ -1,6 +1,6 @@
 <?php
 
-namespace Paystack\Paystack\Observer;
+namespace Pstk\Paystack\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;

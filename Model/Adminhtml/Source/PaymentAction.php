@@ -1,5 +1,5 @@
 <?php
-namespace Paystack\Paystack\Model\Adminhtml\Source;
+namespace Pstk\Paystack\Model\Adminhtml\Source;
 
 use Magento\Payment\Model\Method\AbstractMethod;
 
