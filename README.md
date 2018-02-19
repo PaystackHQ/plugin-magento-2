@@ -7,12 +7,6 @@ Paystack Magento 2 Module
 
 Paystack payment gateway Magento2 extension
 
-TODO
-====
-
-* Make order status after successful payment configurable, instead of stereotyping.
-
-
 Install
 =======
 
@@ -49,13 +43,11 @@ Run the following command:
 composer require yabacon/paystack-php
 ```
 
-
-
 * Enable and configure `Paystack` in *Magento Admin* under `Stores/Configuration/Payment` Methods
 
-[ico-version]: https://img.shields.io/packagist/v/pstk/magento2-module-paystack.svg?style=flat-square
+[ico-version]: https://img.shields.io/packagist/v/pstk/paystack-magento2-module.svg?style=flat-square
 [ico-license]: https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square
-[ico-downloads]: https://img.shields.io/packagist/dt/pstk/magento2-module-paystack.svg?style=flat-square
+[ico-downloads]: https://img.shields.io/packagist/dt/pstk/paystack-magento2-module.svg?style=flat-square
 
-[link-packagist]: https://packagist.org/packages/pstk/magento2-module-paystack
-[link-downloads]: https://packagist.org/packages/pstk/magento2-module-paystack
+[link-packagist]: https://packagist.org/packages/pstk/paystack-magento2-module
+[link-downloads]: https://packagist.org/packages/pstk/paystack-magento2-module
