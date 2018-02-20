@@ -12,7 +12,7 @@ define(
         'use strict';
         rendererList.push(
             {
-                type: 'paystack',
+                type: 'pstk_paystack',
                 component: 'Pstk_Paystack/js/view/payment/method-renderer/pstk_paystack'
             }
         );
