@@ -17,8 +17,8 @@ class AfterOrderObserver implements ObserverInterface
         $method = $order->getPayment()->getMethodInstance();
         // if order payment method is paystack
         if ($method->getCode() === Payment::CODE) {
-            // set the order status to 'pending_payment'
-            $order->setStatus(Order::STATE_PENDING_PAYMENT);
+            // set the order status to 'new _payment'
+            $order->setStatus(Order::STATE_NEW);
             $order->save();
         }
     }
