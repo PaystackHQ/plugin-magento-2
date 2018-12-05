@@ -2,13 +2,11 @@
 [![Software License][ico-license]](LICENSE)
 [![Total Downloads][ico-downloads]][link-downloads]
 
-Paystack Magento 2 Module
-======================
+## Paystack Magento 2 Module
 
 Paystack payment gateway Magento2 extension
 
-Install
-=======
+## Install
 
 * Go to Magento2 root folder
 
@@ -28,8 +26,7 @@ php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 ```
 
-Known Errors
-============
+## Known Errors
 
 * Fail to redirect to success page after successful payment
 
