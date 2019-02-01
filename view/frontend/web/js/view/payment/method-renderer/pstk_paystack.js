@@ -7,7 +7,8 @@ define([
   "Magento_Checkout/js/model/payment/additional-validators",
   "Magento_Checkout/js/model/quote",
   "Magento_Checkout/js/model/full-screen-loader",
-  "Magento_Checkout/js/action/redirect-on-success"
+  "Magento_Checkout/js/action/redirect-on-success",
+  "Pstk_Paystack/js/paystack-inline"
 ], function(
   $,
   Component,
@@ -29,8 +30,7 @@ define([
 
     initialize: function() {
       this._super();
-      // Add Paystack Gateway script to head
-      $("head").append('<script src="https://js.paystack.co/v1/inline.js">');
+      // Add Paystack Gateway script to head /// REPLACED USING REQUIRE.JS
       return this;
     },
 
@@ -105,19 +105,28 @@ define([
         callback: function(response) {
           $.ajax({
             method: "GET",
-            url:
+            
+            /*url:
               paystackConfiguration.api_url +
               "paystack/verify/" +
               response.reference +
-              "_-~-_" +
-              quoteId
+              "_-~-_" + 
+              quoteId */ 
+              url:
+              "https://api.paystack.co/transaction/verify/"+response.reference,
+              beforeSend: function(xhr) {
+             xhr.setRequestHeader("Authorization", "Bearer sk_test_7e06e495c40565daef701e95b3dfeefc88541037");
+             }
           }).success(function(data) {
-            data = JSON.parse(data);
+            //data = JSON.parse(data);
 
             if (data.status) {
               if (data.data.status === "success") {
+                  alert("Payment Successful !");
                 // redirect to success page after
-                redirectOnSuccessAction.execute();
+               redirectOnSuccessAction.execute();
+               // window.location.href = "https://www.zolish.com";
+               //window.location.replace("https://www.zolish.com");
                 return;
               }
             }
@@ -127,6 +136,12 @@ define([
               message: "Error, please try again"
             });
           });
+          
+          console.log(paystackConfiguration.api_url);
+          console.log(response.reference);
+          console.log(quoteId);
+          console.log("Private Key "+paystackConfiguration.secret_key);
+          //redirectOnSuccessAction.execute();
         }
       });
       handler.openIframe();
