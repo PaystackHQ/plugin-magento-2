@@ -103,45 +103,8 @@ define([
           ]
         },
         callback: function(response) {
-          $.ajax({
-            method: "GET",
-            
-            /*url:
-              paystackConfiguration.api_url +
-              "paystack/verify/" +
-              response.reference +
-              "_-~-_" + 
-              quoteId */ 
-              url:
-              "https://api.paystack.co/transaction/verify/"+response.reference,
-              beforeSend: function(xhr) {
-             xhr.setRequestHeader("Authorization", "Bearer sk_test_7e06e495c40565daef701e95b3dfeefc88541037");
-             }
-          }).success(function(data) {
-            //data = JSON.parse(data);
-
-            if (data.status) {
-              if (data.data.status === "success") {
-                  alert("Payment Successful !");
-                // redirect to success page after
-               redirectOnSuccessAction.execute();
-               // window.location.href = "https://www.zolish.com";
-               //window.location.replace("https://www.zolish.com");
-                return;
-              }
-            }
-
-            _this.isPlaceOrderActionAllowed(true);
-            _this.messageContainer.addErrorMessage({
-              message: "Error, please try again"
-            });
-          });
-          
-          console.log(paystackConfiguration.api_url);
-          console.log(response.reference);
-          console.log(quoteId);
-          console.log("Private Key "+paystackConfiguration.secret_key);
-          //redirectOnSuccessAction.execute();
+         
+          redirectOnSuccessAction.execute();
         }
       });
       handler.openIframe();
