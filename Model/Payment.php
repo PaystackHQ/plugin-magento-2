@@ -2,18 +2,18 @@
 
 namespace Pstk\Paystack\Model;
 
+use Exception;
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Yabacon\Paystack;
-use Exception;
 
 class Payment implements \Pstk\Paystack\Api\PaymentInterface
 {
     const CODE = 'pstk_paystack';
 
     protected $config;
-    
+
     protected $paystack;
-    
+
     /**
      * @var EventManager
      */
@@ -50,7 +50,7 @@ class Payment implements \Pstk\Paystack\Api\PaymentInterface
             if ($transaction_details->data->metadata->quoteId === $quoteId) {
                 // dispatch the `payment_verify_after` event to update the order status
                 $this->eventManager->dispatch('payment_verify_after');
-                
+
                 return json_encode($transaction_details);
             }
         } catch (Exception $e) {
