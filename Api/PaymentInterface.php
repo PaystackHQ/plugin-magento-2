@@ -4,6 +4,7 @@ namespace Pstk\Paystack\Api;
 interface PaymentInterface
 {
     /**
+     * @api
      * @param string $reference
      * @return bool
      */

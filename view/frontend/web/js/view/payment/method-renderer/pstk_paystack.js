@@ -61,8 +61,8 @@ define([
         var customerData = checkoutConfig.customerData;
         paymentData.email = customerData.email;
       } else {
-        var storageData = JSON.parse(
-          localStorage.getItem("mage-cache-storage")
+       var storageData = JSON.parse(
+        localStorage.getItem("mage-cache-storage")
         )["checkout-data"];
         paymentData.email = storageData.validatedEmailValue;
       }
@@ -103,8 +103,28 @@ define([
           ]
         },
         callback: function(response) {
-         
-          redirectOnSuccessAction.execute();
+
+          $.ajax({
+            method: "GET",
+            url:paystackConfiguration.ver_url +"ver/page/view",
+            data:{
+                ref:response.reference
+              },
+              complete: function(response){
+                console.log(response);
+              var text = response.responseJSON.message;
+              alert("Payment Successful !");
+              // redirect to success page after
+              if(text==="Transaction was successful")
+            redirectOnSuccessAction.execute();
+
+              },
+                error: function (xhr, status, errorThrown) {
+                    console.log('Error happens. Try again. Code: '+status);
+                }
+
+          });
+
         }
       });
       handler.openIframe();

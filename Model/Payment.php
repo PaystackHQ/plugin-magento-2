@@ -11,9 +11,9 @@ class Payment implements \Pstk\Paystack\Api\PaymentInterface
     const CODE = 'pstk_paystack';
 
     protected $config;
-    
+
     protected $paystack;
-    
+
     /**
      * @var EventManager
      */
@@ -34,11 +34,15 @@ class Payment implements \Pstk\Paystack\Api\PaymentInterface
         $this->paystack = new Paystack($secretKey);
     }
 
-    /**
-     * @return bool
-     */
+     /**
+      * @api
+      * @param string $reference
+      * @return bool
+      */
+
     public function verifyPayment($ref_quote)
     {
+
         // we are appending quoteid
         $ref = explode('_-~-_', $ref_quote);
         $reference = $ref[0];
@@ -50,7 +54,7 @@ class Payment implements \Pstk\Paystack\Api\PaymentInterface
             if ($transaction_details->data->metadata->quoteId === $quoteId) {
                 // dispatch the `payment_verify_after` event to update the order status
                 $this->eventManager->dispatch('payment_verify_after');
-                
+
                 return json_encode($transaction_details);
             }
         } catch (Exception $e) {
@@ -62,6 +66,10 @@ class Payment implements \Pstk\Paystack\Api\PaymentInterface
         return json_encode([
             'status'=>0,
             'message'=>"quoteId doesn't match transaction"
-        ]);
+        ]); 
+
+        return true;
     }
+
+
 }

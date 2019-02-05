@@ -36,9 +36,12 @@ final class ConfigProvider implements ConfigProviderInterface
             'payment' => [
                 self::CODE => [
                     'public_key' => $public_key,
-                    'api_url' => $this->store->getBaseUrl() . 'rest/'
+                    'api_url' => $this->store->getBaseUrl().'rest/',
+                   'ver_url' => $this->store->getBaseUrl()
                 ]
             ]
         ];
     }
+
+
 }
