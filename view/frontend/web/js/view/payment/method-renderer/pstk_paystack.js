@@ -1,5 +1,6 @@
 /*browser:true*/
 /*global define*/
+
 define([
   "jquery",
   "Magento_Checkout/js/view/payment/default",
@@ -20,42 +21,46 @@ define([
 ) {
   "use strict";
 
-  return Component.extend({
-    defaults: {
-      template: "Pstk_Paystack/payment/form",
-      customObserverName: null
-    },
 
-    redirectAfterPlaceOrder: false,
+
+    return Component.extend({
+      defaults: {
+        template: "Pstk_Paystack/payment/form",
+        customObserverName: null
+      },
+
+      redirectAfterPlaceOrder: false,
+
 
     initialize: function() {
       this._super();
       // Add Paystack Gateway script to head /// REPLACED USING REQUIRE.JS
       return this;
     },
+     
+      getCode: function() {
+        return "pstk_paystack";
+      },
 
-    getCode: function() {
-      return "pstk_paystack";
-    },
+      getData: function() {
+        return {
+          method: this.item.method,
+          additional_data: {}
+        };
+      },
 
-    getData: function() {
-      return {
-        method: this.item.method,
-        additional_data: {}
-      };
-    },
+      isActive: function() {
+        return true;
+      },
 
-    isActive: function() {
-      return true;
-    },
+      /**
+       * @override
+       */
+      afterPlaceOrder: function() {
+        var checkoutConfig = window.checkoutConfig;
+        var paymentData = quote.billingAddress();
+        var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
 
-    /**
-     * @override
-     */
-    afterPlaceOrder: function() {
-      var checkoutConfig = window.checkoutConfig;
-      var paymentData = quote.billingAddress();
-      var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
 
       if (checkoutConfig.isCustomerLoggedIn) {
         var customerData = checkoutConfig.customerData;
@@ -67,7 +72,9 @@ define([
         paymentData.email = storageData.validatedEmailValue;
       }
 
-      var quoteId = checkoutConfig.quoteItemData[0].quote_id;
+
+        var quoteId = checkoutConfig.quoteItemData[0].quote_id;
+
 
       var _this = this;
       _this.isPlaceOrderActionAllowed(false);
@@ -131,3 +138,5 @@ define([
     }
   });
 });
+
+

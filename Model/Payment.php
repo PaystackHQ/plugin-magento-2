@@ -2,9 +2,9 @@
 
 namespace Pstk\Paystack\Model;
 
+use Exception;
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Yabacon\Paystack;
-use Exception;
 
 class Payment implements \Pstk\Paystack\Api\PaymentInterface
 {
