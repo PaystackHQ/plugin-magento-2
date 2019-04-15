@@ -63,9 +63,6 @@ define(
           var customerData = checkoutConfig.customerData;
           paymentData.email = customerData.email;
         } else {
-          var storageData = JSON.parse(
-            localStorage.getItem("mage-cache-storage")
-          )["checkout-data"];
           paymentData.email = quote.guestEmail;
         }
 
