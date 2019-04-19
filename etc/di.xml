@@ -1,41 +1,18 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
-    <!-- Payment Method Facade configuration -->
-    <virtualType name="PaystackFacade" type="Magento\Payment\Model\Method\Adapter">
-        <arguments>
-            <argument name="code" xsi:type="const">\Pstk\Paystack\Model\Ui\ConfigProvider::CODE</argument>
-            <argument name="formBlockType" xsi:type="string">Magento\Payment\Block\Form</argument>
-            <argument name="infoBlockType" xsi:type="string">Pstk\Paystack\Block\Info</argument>
-            <argument name="valueHandlerPool" xsi:type="object">PaystackValueHandlerPool</argument>
-        </arguments>
-    </virtualType>
 
-    <!-- Configuration reader -->
-    <virtualType name="PaystackConfig" type="Magento\Payment\Gateway\Config\Config">
-        <arguments>
-            <argument name="methodCode" xsi:type="const">\Pstk\Paystack\Model\Ui\ConfigProvider::CODE</argument>
-        </arguments>
-    </virtualType>
 
-    <!-- Value handlers infrastructure -->
-    <virtualType name="PaystackValueHandlerPool" type="Magento\Payment\Gateway\Config\ValueHandlerPool">
-        <arguments>
-            <argument name="handlers" xsi:type="array">
-                <item name="default" xsi:type="string">PaystackConfigValueHandler</item>
-            </argument>
-        </arguments>
-    </virtualType>
-    <virtualType name="PaystackConfigValueHandler" type="Magento\Payment\Gateway\Config\ConfigValueHandler">
-        <arguments>
-            <argument name="configInterface" xsi:type="object">PaystackConfig</argument>
-        </arguments>
-    </virtualType>
+    
 
-    <type name="Pstk\Paystack\Block\Info">
+
+    <!-- Injecting Paystack config into Info Block -->
+<!--    <type name="Pstk\Paystack\Block\Info">
         <arguments>
             <argument name="config" xsi:type="object">PaystackConfig</argument>
         </arguments>
-    </type>
+    </type>-->
+    
     <!-- API -->
-    <preference for="Pstk\Paystack\Api\PaymentInterface" type="Pstk\Paystack\Model\Payment"/>
+    <preference for="Pstk\Paystack\Api\PaymentManagementInterface" type="Pstk\Paystack\Model\PaymentManagement"/>
+    
 </config>

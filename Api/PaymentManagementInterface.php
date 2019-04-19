@@ -7,7 +7,7 @@ namespace Pstk\Paystack\Api;
  * @api
  * @since 100.0.2
  */
-interface PaymentInterface
+interface PaymentManagementInterface
 {
     /**
      * @param string $reference

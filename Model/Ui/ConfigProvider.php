@@ -27,16 +27,20 @@ final class ConfigProvider implements ConfigProviderInterface
      */
     public function getConfig()
     {
-        $public_key = $this->method->getConfigData('live_public_key');
+        $publicKey = $this->method->getConfigData('live_public_key');
         if ($this->method->getConfigData('test_mode')) {
-            $public_key = $this->method->getConfigData('test_public_key');
+            $publicKey = $this->method->getConfigData('test_public_key');
         }
+        
+        $integrationType = $this->method->getConfigData('integration_type')?: 'inline';
 
         return [
             'payment' => [
                 self::CODE => [
-                    'public_key' => $public_key,
-                    'api_url' => $this->store->getBaseUrl() . 'rest/'
+                    'public_key' => $publicKey,
+                    'integration_type' => $integrationType,
+                    'api_url' => $this->store->getBaseUrl() . 'rest/',
+                    'integration_type_standard_url' => $this->store->getBaseUrl() . 'paystack/payment/setup',
                 ]
             ]
         ];
