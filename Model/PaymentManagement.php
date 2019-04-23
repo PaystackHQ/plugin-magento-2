@@ -23,52 +23,70 @@ namespace Pstk\Paystack\Model;
 
 use Exception;
 use Magento\Payment\Helper\Data as PaymentHelper;
-use Yabacon\Paystack;
+use Pstk\Paystack\Model\Payment\Paystack as PaystackModel;
+use Yabacon\Paystack as PaystackLib;
 
 class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
 {
-    const CODE = 'pstk_paystack';
 
-    protected $config;
+    protected $paystackPaymentInstance;
 
-    protected $paystack;
+    protected $paystackLib;
+    
+    protected $orderInterface;
+    protected $checkoutSession;
 
     /**
-     * @var EventManager
+     * @var \Magento\Framework\Event\Manager
      */
     private $eventManager;
 
     public function __construct(
         PaymentHelper $paymentHelper,
-        \Magento\Framework\Event\Manager $eventManager
+        \Magento\Framework\Event\Manager $eventManager,
+        \Magento\Sales\Api\Data\OrderInterface $orderInterface,
+        \Magento\Checkout\Model\Session $checkoutSession
+            
     ) {
         $this->eventManager = $eventManager;
-        $this->config = $paymentHelper->getMethodInstance(self::CODE);
+        $this->paystackPaymentInstance = $paymentHelper->getMethodInstance(PaystackModel::CODE);
+        
+        $this->orderInterface = $orderInterface;
+        $this->checkoutSession = $checkoutSession;
 
-        $secretKey = $this->config->getConfigData('live_secret_key');
-        if ($this->config->getConfigData('test_mode')) {
-            $secretKey = $this->config->getConfigData('test_secret_key');
+        $secretKey = $this->paystackPaymentInstance->getConfigData('live_secret_key');
+        if ($this->paystackPaymentInstance->getConfigData('test_mode')) {
+            $secretKey = $this->paystackPaymentInstance->getConfigData('test_secret_key');
         }
 
-        $this->paystack = new Paystack($secretKey);
+        $this->paystackLib = new PaystackLib($secretKey);
     }
 
     /**
+     * @param string $reference
      * @return bool
      */
-    public function verifyPayment($ref_quote)
+    public function verifyPayment($reference)
     {
+        
         // we are appending quoteid
-        $ref = explode('_-~-_', $ref_quote);
+        $ref = explode('_-~-_', $reference);
         $reference = $ref[0];
         $quoteId = $ref[1];
+        
         try {
-            $transaction_details = $this->paystack->transaction->verify([
+            $transaction_details = $this->paystackLib->transaction->verify([
                 'reference' => $reference
             ]);
-            if ($transaction_details->data->metadata->quoteId === $quoteId) {
-                // dispatch the `payment_verify_after` event to update the order status
-                $this->eventManager->dispatch('payment_verify_after');
+            
+            $order = $this->getOrder();
+            //return json_encode($transaction_details);
+            if ($order && $order->getQuoteId() === $quoteId && $transaction_details->data->metadata->quoteId === $quoteId) {
+                
+                // dispatch the `paystack_payment_verify_after` event to update the order status
+                $this->eventManager->dispatch('paystack_payment_verify_after', [
+                    "paystack_order" => $order,
+                ]);
 
                 return json_encode($transaction_details);
             }
@@ -84,8 +102,25 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
         ]);
     }
 
-    public function getPayment($param): string {
+    /**
+     * Loads the order based on the last real order
+     * @return boolean
+     */
+    private function getOrder()
+    {
+        // get the last real order id
+        $lastOrder = $this->checkoutSession->getLastRealOrder();
+        if($lastOrder){
+            $lastOrderId = $lastOrder->getIncrementId();
+        } else {
+            return false;
+        }
         
+        if ($lastOrderId) {
+            // load and return the order instance
+            return $this->orderInterface->loadByIncrementId($lastOrderId);
+        }
+        return false;
     }
 
 }

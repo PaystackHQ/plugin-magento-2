@@ -10,13 +10,12 @@ use Magento\Store\Model\Store as Store;
  */
 final class ConfigProvider implements ConfigProviderInterface
 {
-    const CODE = 'pstk_paystack';
 
     protected $method;
 
     public function __construct(PaymentHelper $paymentHelper, Store $store)
     {
-        $this->method = $paymentHelper->getMethodInstance(self::CODE);
+        $this->method = $paymentHelper->getMethodInstance(\Pstk\Paystack\Model\Payment\Paystack::CODE);
         $this->store = $store;
     }
 
@@ -36,7 +35,7 @@ final class ConfigProvider implements ConfigProviderInterface
 
         return [
             'payment' => [
-                self::CODE => [
+                \Pstk\Paystack\Model\Payment\Paystack::CODE => [
                     'public_key' => $publicKey,
                     'integration_type' => $integrationType,
                     'api_url' => $this->store->getBaseUrl() . 'rest/',
@@ -45,4 +44,10 @@ final class ConfigProvider implements ConfigProviderInterface
             ]
         ];
     }
+    
+    public function getStore() {
+        return $this->store;
+    }
+    
+    
 }

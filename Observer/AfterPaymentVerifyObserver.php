@@ -28,10 +28,12 @@ class AfterPaymentVerifyObserver implements ObserverInterface
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
         //Observer execution code...
-        $order = $observer->getEvent()->getOrder();
+        /** @var \Magento\Sales\Model\Order $order **/
+        $order = $observer->getPaystackOrder();
+        
         if ($order) {
             // sets the status to processing since payment has been received
-            $order->setStatus(Order::STATE_PROCESSING);
+            $order->setState(Order::STATE_PROCESSING)->addStatusToHistory(Order::STATE_PROCESSING, __("Paystack Payment Verified and Order is being processed"));
             $order->save();
         }
     }

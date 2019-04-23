@@ -19,24 +19,34 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Pstk\Paystack\Model\Payment;
+namespace Pstk\Paystack\Model\Config\Source;
 
 /**
- * Paystack main payment method model
+ * Option source for Integration types
  * 
- * @author Olayode Ezekiel <kielsoft@gmail.com>
+ * inline    : Popup type
+ * standard  : Redirecting type
+ * 
  */
-class Paystack extends \Magento\Payment\Model\Method\AbstractMethod
+class IntegrationType implements \Magento\Framework\Option\ArrayInterface
 {
+    /**
+     * Options getter
+     *
+     * @return array
+     */
+    public function toOptionArray()
+    {
+        return [['value' => 'inline', 'label' => __('Inline - (Popup)')], ['value' => 'standard', 'label' => __('Standard - (Redirect)')]];
+    }
 
-    const CODE = 'pstk_paystack';
-    
-    protected $_code = self::CODE;
-    protected $_isOffline = true;
-
-    public function isAvailable(
-        \Magento\Quote\Api\Data\CartInterface $quote = null
-    ) {
-        return parent::isAvailable($quote);
+    /**
+     * Get options in "key-value" format
+     *
+     * @return array
+     */
+    public function toArray()
+    {
+        return ["inline" => __('Inline - (Popup)'), 'standard' => __('Standard - (Redirect)')];
     }
 }
