@@ -8,7 +8,6 @@ define(
             "Magento_Checkout/js/model/quote",
             "Magento_Checkout/js/model/full-screen-loader",
             "Magento_Checkout/js/action/redirect-on-success",
-            "paystackTransactioClientEndpoint"
         ],
         function (
                 $,
