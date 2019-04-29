@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="sales_order_place_before">
+      <observer name="ObserverBeforeSalesOrderPlace" instance="Pstk\Paystack\Observer\ObserverBeforeSalesOrderPlace"/>
+   </event>
     <event name="paystack_payment_verify_after">
-        <observer name="AfterPaymentVerifyObserver" instance="Pstk\Paystack\Observer\AfterPaymentVerifyObserver" />
+        <observer name="ObserverAfterPaymentVerify" instance="Pstk\Paystack\Observer\ObserverAfterPaymentVerify" />
     </event>
 </config>

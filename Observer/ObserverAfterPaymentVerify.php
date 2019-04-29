@@ -5,7 +5,7 @@ namespace Pstk\Paystack\Observer;
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
 
-class AfterPaymentVerifyObserver implements ObserverInterface
+class ObserverAfterPaymentVerify implements ObserverInterface
 {
     /**
      * @var \Magento\Sales\Model\OrderFactory $_orderFactory
@@ -33,7 +33,10 @@ class AfterPaymentVerifyObserver implements ObserverInterface
         
         if ($order) {
             // sets the status to processing since payment has been received
-            $order->setState(Order::STATE_PROCESSING)->addStatusToHistory(Order::STATE_PROCESSING, __("Paystack Payment Verified and Order is being processed"));
+            $order->setState(Order::STATE_PROCESSING)
+                    ->addStatusToHistory(Order::STATE_PROCESSING, __("Paystack Payment Verified and Order is being processed"), true)
+                    ->setCanSendNewEmailFlag(true)
+                    ->setCustomerNoteNotify(true);
             $order->save();
         }
     }
