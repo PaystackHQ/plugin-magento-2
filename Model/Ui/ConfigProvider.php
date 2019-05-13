@@ -40,6 +40,7 @@ final class ConfigProvider implements ConfigProviderInterface
                     'integration_type' => $integrationType,
                     'api_url' => $this->store->getBaseUrl() . 'rest/',
                     'integration_type_standard_url' => $this->store->getBaseUrl() . 'paystack/payment/setup',
+                    'recreate_quote_url' => $this->store->getBaseUrl() . 'paystack/payment/recreate',
                 ]
             ]
         ];

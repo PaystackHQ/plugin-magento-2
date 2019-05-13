@@ -35,7 +35,7 @@ define(
                 /**
                  * Provide redirect to page
                  */
-                redirectToStandardControllerAction: function (url) {
+                redirectToCustomAction: function (url) {
                     fullScreenLoader.startLoader();
                     window.location.replace(mageUrl.build(url));
                 },
@@ -50,7 +50,7 @@ define(
                     var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
 
                     if (paystackConfiguration.integration_type == 'standard') {
-                        this.redirectToStandardControllerAction(paystackConfiguration.integration_type_standard_url);
+                        this.redirectToCustomAction(paystackConfiguration.integration_type_standard_url);
                     } else {
                         if (checkoutConfig.isCustomerLoggedIn) {
                             var customerData = checkoutConfig.customerData;
@@ -117,6 +117,9 @@ define(
                                         message: "Error, please try again"
                                     });
                                 });
+                            },
+                            onClose: function(){
+                                _this.redirectToCustomAction(paystackConfiguration.recreate_quote_url);
                             }
                         });
                         handler.openIframe();
