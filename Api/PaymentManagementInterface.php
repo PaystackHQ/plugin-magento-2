@@ -2,18 +2,15 @@
 namespace Pstk\Paystack\Api;
 
 /**
- * PaymentInterface
+ * PaymentManagementInterface
  *
  * @api
- * @since 100.0.2
  */
-interface PaymentInterface
+interface PaymentManagementInterface
 {
     /**
      * @param string $reference
      * @return bool
      */
-    public function verifyPayment(
-        $reference
-    );
+    public function verifyPayment($reference);
 }

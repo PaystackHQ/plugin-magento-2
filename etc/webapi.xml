@@ -1,9 +1,8 @@
 <?xml version="1.0"?>
-<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
     <!-- Verify Payment -->
     <route url="/V1/paystack/verify/:reference" method="GET">
-        <service class="Pstk\Paystack\Api\PaymentInterface" method="verifyPayment"/>
+        <service class="Pstk\Paystack\Api\PaymentManagementInterface" method="verifyPayment"/>
         <resources>
             <resource ref="anonymous" />
         </resources>
