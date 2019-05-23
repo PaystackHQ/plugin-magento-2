@@ -5,7 +5,7 @@ namespace Pstk\Paystack\Observer;
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Sales\Model\Order;
 
-class AfterPaymentVerifyObserver implements ObserverInterface
+class ObserverAfterPaymentVerify implements ObserverInterface
 {
     /**
      * @var \Magento\Sales\Model\OrderFactory $_orderFactory
@@ -28,26 +28,16 @@ class AfterPaymentVerifyObserver implements ObserverInterface
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
         //Observer execution code...
-        $order = $this->getOrder();
+        /** @var \Magento\Sales\Model\Order $order **/
+        $order = $observer->getPaystackOrder();
+        
         if ($order) {
             // sets the status to processing since payment has been received
-            $order->setStatus(Order::STATE_PROCESSING);
+            $order->setState(Order::STATE_PROCESSING)
+                    ->addStatusToHistory(Order::STATE_PROCESSING, __("Paystack Payment Verified and Order is being processed"), true)
+                    ->setCanSendNewEmailFlag(true)
+                    ->setCustomerNoteNotify(true);
             $order->save();
         }
-    }
-    
-    /**
-     * Loads the order based on the last real order
-     * @return boolean
-     */
-    private function getOrder()
-    {
-        // get the last real order id
-        $lastOrderId = $this->_checkoutSession->getLastRealOrderId();
-        if ($lastOrderId) {
-            // load and return the order instance
-            return $this->_orderFactory->create()->loadByIncrementId($lastOrderId);
-        }
-        return false;
     }
 }

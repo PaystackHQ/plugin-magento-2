@@ -6,15 +6,16 @@
                 <debug>1</debug>
                 <active>0</active>
                 <test_mode>1</test_mode>
-                <model>PaystackFacade</model>
+                <integration_type>inline</integration_type>
+                <model>Pstk\Paystack\Model\Payment\Paystack</model>
                 <title>Credit/Debit Cards (powered by Paystack)</title>
                 <live_secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
                 <test_secret_key backend_model="Magento\Config\Model\Config\Backend\Encrypted" />
                 <currency>NGN</currency>
                 <can_use_checkout>1</can_use_checkout>
-                <is_gateway>1</is_gateway>
+                <can_use_internal>0</can_use_internal>
                 <sort_order>400</sort_order>
-                <order_status>processing</order_status>
+                <order_status>pending</order_status>
                 <allowspecific>0</allowspecific>
                 <min_order_total>100</min_order_total>
                 <max_order_total>500000</max_order_total>
