@@ -28,11 +28,26 @@ use Magento\Payment\Helper\Data as PaymentHelper;
 abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Action {
 
     protected $resultPageFactory;
+    
+    /**
+     *
+     * @var \Magento\Sales\Api\OrderRepositoryInterface 
+     */
     protected $orderRepository;
+    
+    /**
+     *
+     * @var \Magento\Sales\Api\Data\OrderInterface
+     */
     protected $orderInterface;
     protected $checkoutSession;
     protected $method;
     protected $messageManager;
+    
+    /**
+     *
+     * @var \Pstk\Paystack\Model\Ui\ConfigProvider 
+     */
     protected $configProvider;
     
     /**
@@ -45,6 +60,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
      * @var \Magento\Framework\Event\Manager
      */
     protected $eventManager;
+    
+    /**
+     *
+     * @var \Psr\Log\LoggerInterface
+     */
+    protected $logger;
 
     /**
      * Constructor
@@ -61,7 +82,8 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             PaymentHelper $paymentHelper,
             \Magento\Framework\Message\ManagerInterface $messageManager,
             \Pstk\Paystack\Model\Ui\ConfigProvider $configProvider,
-            \Magento\Framework\Event\Manager $eventManager
+            \Magento\Framework\Event\Manager $eventManager,
+            \Psr\Log\LoggerInterface $logger
     ) {
         $this->resultPageFactory = $resultPageFactory;
         $this->orderRepository = $orderRepository;
@@ -71,6 +93,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->messageManager = $messageManager;
         $this->configProvider = $configProvider;
         $this->eventManager = $eventManager;
+        $this->logger = $logger;
         
         $this->paystack = $this->initPaystackPHP();
         
