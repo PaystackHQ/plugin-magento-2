@@ -31,7 +31,7 @@ class ObserverAfterPaymentVerify implements ObserverInterface
         /** @var \Magento\Sales\Model\Order $order **/
         $order = $observer->getPaystackOrder();
         
-        if ($order) {
+        if ($order && $order->getStatus() == "pending") {
             // sets the status to processing since payment has been received
             $order->setState(Order::STATE_PROCESSING)
                     ->addStatusToHistory(Order::STATE_PROCESSING, __("Paystack Payment Verified and Order is being processed"), true)

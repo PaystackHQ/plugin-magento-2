@@ -50,5 +50,19 @@ final class ConfigProvider implements ConfigProviderInterface
         return $this->store;
     }
     
+    /**
+     * Get secret key for webhook process
+     * 
+     * @return array
+     */
+    public function getSecretKeyArray(){
+        $data = ["live" => $this->method->getConfigData('live_secret_key')];
+        if ($this->method->getConfigData('test_mode')) {
+            $data = ["test" => $this->method->getConfigData('test_secret_key')];
+        }
+        
+        return $data;
+    }
+    
     
 }
