@@ -25,7 +25,7 @@ namespace Pstk\Paystack\Controller\Payment;
 use Magento\Sales\Model\Order;
 use Magento\Framework\App\CsrfAwareActionInterface;
 
-include_once realpath(dirname(__FILE__)) . '../class-paystack-plugin-tracker.php';
+include_once realpath(dirname(__FILE__)) . '/class-paystack-plugin-tracker.php';
 class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterface
 {
 
