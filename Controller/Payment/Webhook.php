@@ -33,6 +33,8 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
         // Retrieve the request's body and parse it as JSON
         $event = \Yabacon\Paystack\Event::capture();
         http_response_code(200);
+        
+        $resultFactory = $this->resultFactory->create(\Magento\Framework\Controller\ResultFactory::TYPE_RAW);
 
         /* It is a important to log all events received. Add code *
          * here to log the signature and body to db or file       */
@@ -44,7 +46,8 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
         
         if (!$owner) {
             // None of the keys matched the event's signature
-            die("auth failed");
+            $resultFactory->setContents("auth failed");
+            return $resultFactory;
         }
 
         // Do something with $event->obj
@@ -81,20 +84,23 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
                         $this->eventManager->dispatch('paystack_payment_verify_after', [
                             "paystack_order" => $order,
                         ]);
-                        die("success");
+                        
+                        $resultFactory->setContents("success");
+                        return $resultFactory;
                     }
                 }
                 break;
         }
         
-        die("failed");
+        $resultFactory->setContents("failed");
+        return $resultFactory;
     }
 
-    public function createCsrfValidationException(\Magento\Framework\App\RequestInterface $request): ?\Magento\Framework\App\Request\InvalidRequestException {
+    public function createCsrfValidationException(\Magento\Framework\App\RequestInterface $request) {
         return null;
     }
 
-    public function validateForCsrf(\Magento\Framework\App\RequestInterface $request): ?bool {
+    public function validateForCsrf(\Magento\Framework\App\RequestInterface $request) {
         return true;
     }
 
