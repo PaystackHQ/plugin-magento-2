@@ -66,6 +66,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
      * @var \Psr\Log\LoggerInterface
      */
     protected $logger;
+    
+    /**
+     *
+     * @var \Magento\Framework\App\Request\Http 
+     */
+    protected $request;
 
     /**
      * Constructor
@@ -83,6 +89,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             \Magento\Framework\Message\ManagerInterface $messageManager,
             \Pstk\Paystack\Model\Ui\ConfigProvider $configProvider,
             \Magento\Framework\Event\Manager $eventManager,
+            \Magento\Framework\App\Request\Http $request,
             \Psr\Log\LoggerInterface $logger
     ) {
         $this->resultPageFactory = $resultPageFactory;
@@ -93,6 +100,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->messageManager = $messageManager;
         $this->configProvider = $configProvider;
         $this->eventManager = $eventManager;
+        $this->request = $request;
         $this->logger = $logger;
         
         $this->paystack = $this->initPaystackPHP();

@@ -31,7 +31,7 @@ class Callback extends AbstractPaystackStandard {
      */
     public function execute() {
 
-        $reference = isset($_GET['reference']) ? $_GET['reference'] : '';
+        $reference = $this->request->get('reference');
         $message = "";
         
         if (!$reference) {
