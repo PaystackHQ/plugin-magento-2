@@ -44,7 +44,7 @@ class Callback extends AbstractPaystackStandard {
             ]);
             
             $reference = explode('_', $transactionDetails->data->reference, 2);
-            $reference = @$reference[0];
+            $reference = ($reference[0])?: 0;
             
             $order = $this->orderInterface->loadByIncrementId($reference);
             
