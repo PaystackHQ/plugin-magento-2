@@ -105,7 +105,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         
         $this->paystack = $this->initPaystackPHP();
         
-
+        
         parent::__construct($context);
     }
     

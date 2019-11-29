@@ -7,4 +7,7 @@
             </argument>
         </arguments>
     </type>
+    <type name="Magento\Framework\App\Request\CsrfValidator">
+        <plugin name="csrf_validator_skip" type="Pstk\Paystack\Plugin\CsrfValidatorSkip" />
+    </type>
 </config>
