@@ -31,7 +31,7 @@ class Callback extends AbstractPaystackStandard {
      */
     public function execute() {
 
-        $reference = isset($_GET['reference']) ? $_GET['reference'] : '';
+        $reference = $this->request->get('reference');
         $message = "";
         
         if (!$reference) {
@@ -44,7 +44,7 @@ class Callback extends AbstractPaystackStandard {
             ]);
             
             $reference = explode('_', $transactionDetails->data->reference, 2);
-            $reference = @$reference[0];
+            $reference = ($reference[0])?: 0;
             
             $order = $this->orderInterface->loadByIncrementId($reference);
             
