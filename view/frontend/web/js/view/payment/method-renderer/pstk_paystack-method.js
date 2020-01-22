@@ -109,7 +109,7 @@ define(
                                     //JS PSTK-logger
                                     $.ajax({
                                         method: 'POST',
-                                        url: "http://46.101.87.70:4553/log/charge_success",
+                                        url: "https://plugin-tracker.paystackintegrations.com/log/charge_success",
                                         data:{
                                             plugin_name: 'magento-2',
                                             transaction_reference: response.reference,
