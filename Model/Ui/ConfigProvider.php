@@ -63,6 +63,14 @@ class ConfigProvider implements ConfigProviderInterface
         
         return $data;
     }
+
+    public function getPublicKey(){
+        $publicKey = $this->method->getConfigData('live_public_key');
+        if ($this->method->getConfigData('test_mode')) {
+            $publicKey = $this->method->getConfigData('test_public_key');
+        }
+        return $publicKey;
+    }
     
     
 }

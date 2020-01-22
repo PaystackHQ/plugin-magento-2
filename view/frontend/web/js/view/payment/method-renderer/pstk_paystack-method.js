@@ -91,6 +91,11 @@ define(
                                         display_name: "City",
                                         variable_name: "city",
                                         value: paymentData.city + ", " + paymentData.countryId
+                                    },
+                                    {
+                                        display_name: "Plugin",
+                                        variable_name: "plugin",
+                                        value: "magento-2"
                                     }
                                 ]
                             },
@@ -101,7 +106,16 @@ define(
                                     url: paystackConfiguration.api_url + "V1/paystack/verify/" + response.reference + "_-~-_" + quoteId
                                 }).success(function (data) {
                                     data = JSON.parse(data);
-
+                                    //JS PSTK-logger
+                                    $.ajax({
+                                        method: 'POST',
+                                        url: "https://plugin-tracker.paystackintegrations.com/log/charge_success",
+                                        data:{
+                                            plugin_name: 'magento-2',
+                                            transaction_reference: response.reference,
+                                            public_key: paystackConfiguration.public_key
+                                        }
+                                    })
                                     if (data.status) {
                                         if (data.data.status === "success") {
                                             // redirect to success page after
