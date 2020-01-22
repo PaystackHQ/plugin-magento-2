@@ -8,7 +8,7 @@ use Magento\Store\Model\Store as Store;
 /**
  * Class ConfigProvider
  */
-final class ConfigProvider implements ConfigProviderInterface
+class ConfigProvider implements ConfigProviderInterface
 {
 
     protected $method;
