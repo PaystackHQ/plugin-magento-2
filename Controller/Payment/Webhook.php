@@ -24,10 +24,8 @@ namespace Pstk\Paystack\Controller\Payment;
 
 
 use Magento\Sales\Model\Order;
-use Magento\Framework\App\CsrfAwareActionInterface;
 
-class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterface
-
+class Webhook extends AbstractPaystackStandard
 {
 
     public function execute() {
@@ -111,13 +109,5 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
         
         $resultFactory->setContents($finalMessage);
         return $resultFactory;
-    }
-
-     public function createCsrfValidationException(\Magento\Framework\App\RequestInterface $request): ?\Magento\Framework\App\Request\InvalidRequestException {
-        return null;
-    }
-
-    public function validateForCsrf(\Magento\Framework\App\RequestInterface $request): ?bool {
-        return true;
     }
 }
