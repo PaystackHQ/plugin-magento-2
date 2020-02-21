@@ -73,7 +73,8 @@ class Webhook extends AbstractPaystackStandard
 
 
                     $reference = $transactionDetails->data->reference;
-                    
+                    //PSTK_LOGGER HERE
+                    log_transaction_success($reference);
                     //------------------------
                     $order = $this->orderInterface->loadByIncrementId($reference);
                     
@@ -109,5 +110,32 @@ class Webhook extends AbstractPaystackStandard
         
         $resultFactory->setContents($finalMessage);
         return $resultFactory;
+    }
+
+    function log_transaction_success($trx_ref){
+        //send reference to logger along with plugin name and public key
+        $url = "https://plugin-tracker.paystackintegrations.com/log/charge_success";
+        $plugin_name = 'magento-2';
+        $public_key = $this->configProvider->getPublicKey();
+
+        $fields = [
+            'plugin_name'  => $plugin_name,
+            'transaction_reference' => $trx_ref,
+            'public_key' => $public_key
+        ];
+
+        $fields_string = http_build_query($fields);
+
+        $ch = curl_init();
+
+        curl_setopt($ch,CURLOPT_URL, $url);
+        curl_setopt($ch,CURLOPT_POST, true);
+        curl_setopt($ch,CURLOPT_POSTFIELDS, $fields_string);
+
+        curl_setopt($ch,CURLOPT_RETURNTRANSFER, true); 
+
+        //execute post
+        $result = curl_exec($ch);
+        //  echo $result;
     }
 }
