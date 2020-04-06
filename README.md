@@ -50,6 +50,19 @@ composer require yabacon/paystack-php
 [link-downloads]: https://packagist.org/packages/pstk/paystack-magento2-module
 
 
+## Running the magento2 on docker
+Contained within this repo, is a dockerfile and a docker-compose file to quickly spin up a magento2 and mysql container with the paystack plugin installed.
+
+### Prerequisites
+- Install [Docker](https://www.docker.com/)
+
+### Quick Steps
+- Create a `.env` file off the `.env.sample` in the root directory. Replace the `*******` with the right values
+- Run `docker-compose up` from the root directory to build and start the mysql and magento2 containers.
+- Visit `localhost:8000` on your browser to access the magento store. For the admin backend, visit `localhost:8000/<MAGENTO_BACKEND_FRONTNAME>` where `MAGENTO_BACKEND_FRONTNAME` is the value you specified in your `.env` file
+- Run `docker-compose down` from the root directory to stop the containers.
+
+
 ## Documentation
 
 * [Paystack Documentation](https://developers.paystack.co/v2.0/docs/)
