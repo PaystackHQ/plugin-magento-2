@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -eux 
+
+chown -R www-data:www-data /var/www/html/var/composer_home
+
+# Setup the magento store and install, enable and compile the paystack magento module
+# We are running these commands as the www-data user who is the magento file system owner. 
+# Visit https://devdocs.magento.com/guides/v2.3/install-gde/prereq/file-sys-perms-over.html for more information
+su www-data <<EOSU
+/var/www/html/bin/magento setup:install --base-url=$MAGENTO_URL --backend-frontname=$MAGENTO_BACKEND_FRONTNAME --db-host=$MYSQL_HOST --db-name=$MYSQL_DATABASE --db-user=$MYSQL_USER --db-password=$MYSQL_PASSWORD --use-secure=$MAGENTO_USE_SECURE --base-url-secure=$MAGENTO_BASE_URL_SECURE --use-secure-admin=$MAGENTO_USE_SECURE_ADMIN --admin-firstname=$MAGENTO_ADMIN_FIRSTNAME --admin-lastname=$MAGENTO_ADMIN_LASTNAME --admin-email=$MAGENTO_ADMIN_EMAIL --admin-user=$MAGENTO_ADMIN_USERNAME --admin-password=$MAGENTO_ADMIN_PASSWORD
+composer require pstk/paystack-magento2-module
+/var/www/html/bin/magento module:enable Pstk_Paystack --clear-static-content
+/var/www/html/bin/magento setup:upgrade
+/var/www/html/bin/magento setup:di:compile
+EOSU
+
+# Starting the Apache server
+echo "Starting Apache..."
+source /etc/apache2/envvars
+exec apache2 -DFOREGROUND "$@"
