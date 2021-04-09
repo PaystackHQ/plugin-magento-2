@@ -8,21 +8,14 @@ use Magento\Sales\Model\Order;
 class ObserverAfterPaymentVerify implements ObserverInterface
 {
     /**
-     * @var \Magento\Sales\Model\OrderFactory $_orderFactory
+     * @var \Magento\Sales\Model\Order\Email\Sender\OrderSender
      */
-    protected $_orderFactory;
-    
-    /**
-     * @var \Magento\Checkout\Model\Session $_checkoutSession
-     */
-    protected $_checkoutSession;
+    protected $orderSender;
     
     public function __construct(
-        \Magento\Sales\Model\OrderFactory $orderFactory,
-        \Magento\Checkout\Model\Session $checkoutSession
+        \Magento\Sales\Model\Order\Email\Sender\OrderSender $orderSender
     ) {
-        $this->_checkoutSession = $checkoutSession;
-        $this->_orderFactory = $orderFactory;
+        $this->orderSender = $orderSender;
     }
 
     public function execute(\Magento\Framework\Event\Observer $observer)
@@ -38,6 +31,8 @@ class ObserverAfterPaymentVerify implements ObserverInterface
                     ->setCanSendNewEmailFlag(true)
                     ->setCustomerNoteNotify(true);
             $order->save();
+            
+            $this->orderSender->send($order, true);
         }
     }
 }

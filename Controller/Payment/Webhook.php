@@ -24,11 +24,8 @@ namespace Pstk\Paystack\Controller\Payment;
 
 
 use Magento\Sales\Model\Order;
-use Magento\Framework\App\CsrfAwareActionInterface;
 
-include_once realpath(dirname(__FILE__)) . '/class-paystack-plugin-tracker.php';
-class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterface
-
+class Webhook extends AbstractPaystackStandard
 {
 
     public function execute() {
@@ -76,9 +73,8 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
 
 
                     $reference = $transactionDetails->data->reference;
-                    //PSTK LOGGER HERE
-                    $pstk_logger = new magento_2_paystack_plugin_tracker('magento-2',$this->configProvider->getPublicKey());
-                    $pstk_logger.log_transaction_success($reference);
+                    //PSTK_LOGGER HERE
+                    log_transaction_success($reference);
                     //------------------------
                     $order = $this->orderInterface->loadByIncrementId($reference);
                     
@@ -104,13 +100,42 @@ class Webhook extends AbstractPaystackStandard implements CsrfAwareActionInterfa
                             return $resultFactory;
                         }
                     }
+                }
                     break;
             }
+        }
         } catch (Exception $exc) {
             $finalMessage = $exc->getMessage();
         }
         
         $resultFactory->setContents($finalMessage);
         return $resultFactory;
+    }
+
+    function log_transaction_success($trx_ref){
+        //send reference to logger along with plugin name and public key
+        $url = "https://plugin-tracker.paystackintegrations.com/log/charge_success";
+        $plugin_name = 'magento-2';
+        $public_key = $this->configProvider->getPublicKey();
+
+        $fields = [
+            'plugin_name'  => $plugin_name,
+            'transaction_reference' => $trx_ref,
+            'public_key' => $public_key
+        ];
+
+        $fields_string = http_build_query($fields);
+
+        $ch = curl_init();
+
+        curl_setopt($ch,CURLOPT_URL, $url);
+        curl_setopt($ch,CURLOPT_POST, true);
+        curl_setopt($ch,CURLOPT_POSTFIELDS, $fields_string);
+
+        curl_setopt($ch,CURLOPT_RETURNTRANSFER, true); 
+
+        //execute post
+        $result = curl_exec($ch);
+        //  echo $result;
     }
 }
