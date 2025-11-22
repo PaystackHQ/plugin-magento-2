@@ -64,7 +64,7 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
 
     /**
      * @param string $reference
-     * @return bool
+     * @return string
      */
     public function verifyPayment($reference)
     {
@@ -80,7 +80,6 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
             ]);
             
             $order = $this->getOrder();
-            //return json_encode($transaction_details);
             if ($order && $order->getQuoteId() === $quoteId && $transaction_details->data->metadata->quoteId === $quoteId) {
                 
                 // dispatch the `paystack_payment_verify_after` event to update the order status
@@ -88,17 +87,22 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
                     "paystack_order" => $order,
                 ]);
 
-                return json_encode($transaction_details);
+                // Return consistent response format
+                return json_encode([
+                    'status' => true,
+                    'message' => 'Verification successful',
+                    'data' => $transaction_details->data
+                ]);
             }
         } catch (Exception $e) {
             return json_encode([
-                'status'=>0,
-                'message'=>$e->getMessage()
+                'status' => false,
+                'message' => $e->getMessage()
             ]);
         }
         return json_encode([
-            'status'=>0,
-            'message'=>"quoteId doesn't match transaction"
+            'status' => false,
+            'message' => "quoteId doesn't match transaction"
         ]);
     }
 

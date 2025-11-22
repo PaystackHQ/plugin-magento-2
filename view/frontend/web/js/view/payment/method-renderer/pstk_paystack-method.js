@@ -8,6 +8,7 @@ define(
             "Magento_Checkout/js/model/quote",
             "Magento_Checkout/js/model/full-screen-loader",
             "Magento_Checkout/js/action/redirect-on-success",
+            "paystack"
         ],
         function (
                 $,
@@ -17,7 +18,8 @@ define(
                 additionalValidators,
                 quote,
                 fullScreenLoader,
-                redirectOnSuccessAction
+                redirectOnSuccessAction,
+                PaystackPop
                 ) {
             'use strict';
 
@@ -44,7 +46,6 @@ define(
                  * @override
                  */
                 afterPlaceOrder: function () {
-
                     var checkoutConfig = window.checkoutConfig;
                     var paymentData = quote.billingAddress();
                     var paystackConfiguration = checkoutConfig.payment.pstk_paystack;
@@ -63,7 +64,9 @@ define(
 
                         var _this = this;
                         _this.isPlaceOrderActionAllowed(false);
-                        var handler = PaystackPop.setup({
+                        
+                        var popup = new PaystackPop();
+                        popup.newTransaction({
                             key: paystackConfiguration.public_key,
                             email: paymentData.email,
                             amount: Math.ceil(quote.totals().grand_total * 100), // get order total from quote for an accurate... quote
@@ -99,14 +102,31 @@ define(
                                     }
                                 ]
                             },
-                            callback: function (response) {
+                            onSuccess: function (response) {
                                 fullScreenLoader.startLoader();
                                 $.ajax({
                                     method: "GET",
-                                    url: paystackConfiguration.api_url + "V1/paystack/verify/" + response.reference + "_-~-_" + quoteId
-                                }).success(function (data) {
-                                    data = JSON.parse(data);
-                                    //JS PSTK-logger
+                                    url: paystackConfiguration.api_url + "V1/paystack/verify/" + response.reference + "_-~-_" + quoteId,
+                                    dataType: 'text'
+                                }).done(function (data) {
+                                    // Parse JSON response (may be double-encoded)
+                                    try {
+                                        data = JSON.parse(data);
+                                        // Check if it's still a string (double-encoded)
+                                        if (typeof data === 'string') {
+                                            data = JSON.parse(data);
+                                        }
+                                    } catch (e) {
+                                        console.error('Payment verification JSON parse error:', e);
+                                        fullScreenLoader.stopLoader();
+                                        _this.isPlaceOrderActionAllowed(true);
+                                        _this.messageContainer.addErrorMessage({
+                                            message: "Payment verification error."
+                                        });
+                                        return;
+                                    }
+                                    
+                                    // Log payment success
                                     $.ajax({
                                         method: 'POST',
                                         url: "https://plugin-tracker.paystackintegrations.com/log/charge_success",
@@ -115,28 +135,31 @@ define(
                                             transaction_reference: response.reference,
                                             public_key: paystackConfiguration.public_key
                                         }
-                                    })
-                                    if (data.status) {
-                                        if (data.data.status === "success") {
-                                            // redirect to success page after
-                                            redirectOnSuccessAction.execute();
-                                            return;
-                                        }
+                                    });
+                                    
+                                    // Check if payment was successful
+                                    if (data.status && data.data && data.data.status === "success") {
+                                        redirectOnSuccessAction.execute();
+                                        return;
                                     }
-
+                                    // Payment verification failed
                                     fullScreenLoader.stopLoader();
-
                                     _this.isPlaceOrderActionAllowed(true);
                                     _this.messageContainer.addErrorMessage({
-                                        message: "Error, please try again"
+                                        message: "Payment verification failed. Status: " + (data.data ? data.data.status : 'unknown')
+                                    });
+                                }).fail(function () {
+                                    fullScreenLoader.stopLoader();
+                                    _this.isPlaceOrderActionAllowed(true);
+                                    _this.messageContainer.addErrorMessage({
+                                        message: "Payment verification failed."
                                     });
                                 });
                             },
-                            onClose: function(){
+                            onCancel: function(){
                                 _this.redirectToCustomAction(paystackConfiguration.recreate_quote_url);
                             }
                         });
-                        handler.openIframe();
                     }
                 },
 
