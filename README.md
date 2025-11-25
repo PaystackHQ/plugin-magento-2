@@ -6,6 +6,38 @@
 
 Paystack payment gateway Magento2 extension
 
+**Version:** 2.5.0 (Paystack v2 Inline.js API)
+
+## Requirements
+
+- Magento 2.x
+- PHP 8.3+
+- yabacon/paystack-php v2.2.0 or newer
+
+## Installation
+
+### Composer (Recommended)
+
+Go to your Magento2 root folder and run:
+
+```bash
+composer require pstk/paystack-magento2-module:^2.5.0
+php bin/magento module:enable Pstk_Paystack
+php bin/magento setup:upgrade
+php bin/magento cache:flush
+```
+
+### Manual Installation (Custom Source)
+
+Copy all files from your source folder (`plugin-magento-2`) to `app/code/Pstk/Paystack/` in your Magento installation.
+
+Then run:
+```bash
+php bin/magento module:enable Pstk_Paystack
+php bin/magento setup:upgrade
+php bin/magento cache:flush
+```
+
 ## Install
 
 * Go to Magento2 root folder
@@ -28,35 +60,37 @@ php bin/magento setup:di:compile
 
 ## Configuration
 
-To configure the plugin in *Magento Admin* , go to __Stores > Configuration__ from the left hand menu, then click __Payment Methods__ from the list of options. You will see __Paystack__ as part of the available Payment Methods. Click on it to configure the payment gateway.
 
-* __Enabled__ - Select _Yes_ to enable Paystack Payment Gateway.
-* __Title__ - allows you to determine what your customers will see this payment option as on the checkout page.
-* __Integration Type__ - allows you to select the type of checkout experience you want on your website. Select _Inline(Popup)_ if you want your customers to checkout while still on your website, and _Redirect_ to be redirected to the payment gateway's checkout
-* __Test Mode__ - Check to enable test mode. Test mode enables you to test payments before going live. If you ready to start receving real payment on your site, kindly uncheck this.
-* __Test Secret Key__ - Enter your Test Secret Key here. Get your API keys from your [Paystack account under Settings > Developer/API](https://dashboard.paystack.com/#/settings/developer)
-* __Test Public Key__ - Enter your Test Public Key here. Get your API keys from your [Paystack account under Settings > Developer/API](https://dashboard.paystack.com/#/settings/developer)
-* __Live Secret Key__ - Enter your Live Secret Key here. Get your API keys from your [Paystack account under Settings > Developer/API](https://dashboard.paystack.com/#/settings/developer)
-* __Live Public Key__ - Enter your Live Public Key here. Get your API keys from your [Paystack account under Settings > Developer/API](https://dashboard.paystack.com/#/settings/developer) 
-* Click on __Save Config__ for the changes you made to be effected.
+To configure the plugin in *Magento Admin*:
+1. Go to **Stores > Configuration > Sales > Payment Methods**.
+2. Find **Paystack** and configure:
+	- **Enabled**: Yes/No
+	- **Title**: What customers see at checkout
+	- **Integration Type**: Inline (Popup) or Redirect
+	- **Test Mode**: Enable for sandbox testing
+	- **Test/Live Secret Key**: Get from your [Paystack dashboard](https://dashboard.paystack.com/#/settings/developer)
+	- **Test/Live Public Key**: Get from your [Paystack dashboard](https://dashboard.paystack.com/#/settings/developer)
+3. Click **Save Config**.
+
+**Note:** Inline (Popup) uses Paystack v2 Inline.js API. Make sure your CSP whitelist and RequireJS config are updated as shown in the migration guide.
 
 ![Magento Settings](https://res.cloudinary.com/drps6uoe4/image/upload/v1617968546/Screenshot_2021-04-09_at_10.51.31_outbpi.png)
 
 ## Known Errors
 
-* Fail to redirect to success page after successful payment
+Sometimes after receiving payment for an order you get an error like: Class Yabacon\Paystack not found and magento doesn't redirect to the `success` page.
 
-Sometimes after receiving payment for an order you get an error like: `Class Yabacon\Paystack not found` 
-and magento doesn't redirect to the `success` page.
+**Fix:** 
 
-** Fix:
-Run the following command:
-
+Run:
 ```bash
 composer require yabacon/paystack-php
 ```
+    Enable and configure Paystack in Magento Admin under Stores/Configuration/Sales/Payment Methods
 
-* Enable and configure `Paystack` in *Magento Admin* under `Stores/Configuration/Payment` Methods
+**Fail to redirect to success page after payment**
+
+Ensure you are using Paystack v2 Inline.js and your CSP/RequireJS configs are correct.
 
 [ico-version]: https://img.shields.io/packagist/v/pstk/paystack-magento2-module.svg?style=flat-square
 [ico-license]: https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square
@@ -67,16 +101,18 @@ composer require yabacon/paystack-php
 
 
 ## Running the magento2 on docker
-Contained within this repo, is a dockerfile and a docker-compose file to quickly spin up a magento2 and mysql container with the paystack plugin installed.
+
+Contained within this repo is a Dockerfile and a docker-compose file to quickly spin up Magento 2 and MySQL containers with the Paystack plugin installed.
 
 ### Prerequisites
 - Install [Docker](https://www.docker.com/)
 
 ### Quick Steps
-- Create a `.env` file off the `.env.sample` in the root directory. Replace the `*******` with the right values
-- Run `docker-compose up` from the root directory to build and start the mysql and magento2 containers.
-- Visit `localhost:8000` on your browser to access the magento store. For the admin backend, visit `localhost:8000/<MAGENTO_BACKEND_FRONTNAME>` where `MAGENTO_BACKEND_FRONTNAME` is the value you specified in your `.env` file
-- Run `docker-compose down` from the root directory to stop the containers.
+
+- Create a `.env` file from `.env.sample` in the root directory. Fill in your values.
+- Run `docker-compose up` from the root directory to build and start the containers.
+- Visit `localhost:8000` for the Magento store. For admin, visit `localhost:8000/<MAGENTO_BACKEND_FRONTNAME>` (set in `.env`).
+- Run `docker-compose down` to stop the containers.
 
 
 ## Documentation
