@@ -55,7 +55,7 @@ class Setup extends AbstractPaystackStandard {
             'email' => $order->getCustomerEmail(), // unique to customers
             'reference' => $order->getIncrementId(), // unique to transactions
             'currency' => $order->getCurrency(),
-            'callback_url' => $this->configProvider->store->getBaseUrl() . "paystack/payment/callback",
+            'callback_url' => $this->configProvider->getStore()->getBaseUrl() . "paystack/payment/callback",
             'metadata' => array('custom_fields' => array(
                 array(
                     "display_name"=>"Plugin",
