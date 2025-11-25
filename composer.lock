@@ -8,7 +8,7 @@
     "packages": [
         {
             "name": "yabacon/paystack-php",
-            "version": "v2.1.21",
+            "version": "v2.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/yabacon/paystack-php.git",
@@ -54,7 +54,14 @@
                     "email": "ibrahim@lawal.me",
                     "homepage": "http://ibrahim.lawal.me",
                     "role": "Developer"
+                },
+                {
+                    "name": "Gertrude Abagale",
+                    "email": "gertrude@abagale.me",
+                    "homepage": "http://gertrude.abagale.me",
+                    "role": "Developer"
                 }
+
             ],
             "description": "Helps make your Paystack API calls giving a stdClass object.",
             "homepage": "https://github.com/yabacon/paystack-php",
