@@ -1,5 +1,13 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- Payment verify API (frontend + webapi_rest only — never in admin) -->
+    <preference for="Pstk\Paystack\Api\PaymentManagementInterface" type="Pstk\Paystack\Model\PaymentManagement"/>
+    <type name="Pstk\Paystack\Model\PaymentManagement">
+        <arguments>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+
     <type name="Magento\Checkout\Model\CompositeConfigProvider">
         <arguments>
             <argument name="configProviders" xsi:type="array">
@@ -11,7 +19,7 @@
         <plugin name="csrf_validator_skip" type="Pstk\Paystack\Plugin\CsrfValidatorSkip" />
     </type>
 
-    <!-- CSP: register Paystack domains via PHP collector (frontend only - Paystack is not used in admin) -->
+    <!-- CSP: register Paystack domains via PHP collector (frontend only — Paystack is not used in admin) -->
     <type name="Magento\Csp\Model\CompositePolicyCollector">
         <arguments>
             <argument name="collectors" xsi:type="array">
