@@ -23,6 +23,7 @@
 namespace Pstk\Paystack\Controller\Payment;
 
 use Magento\Payment\Helper\Data as PaymentHelper;
+use Magento\Store\Model\StoreManagerInterface;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 
 
@@ -42,6 +43,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
      */
     protected $orderInterface;
     protected $checkoutSession;
+    protected $paymentHelper;
     protected $method;
     protected $messageManager;
 
@@ -50,6 +52,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
      * @var \Pstk\Paystack\Model\Ui\ConfigProvider
      */
     protected $configProvider;
+
+    /**
+     *
+     * @var StoreManagerInterface
+     */
+    protected $storeManager;
 
     /**
      *
@@ -89,6 +97,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             PaymentHelper $paymentHelper,
             \Magento\Framework\Message\ManagerInterface $messageManager,
             \Pstk\Paystack\Model\Ui\ConfigProvider $configProvider,
+            StoreManagerInterface $storeManager,
             \Magento\Framework\Event\Manager $eventManager,
             \Magento\Framework\App\Request\Http $request,
             \Psr\Log\LoggerInterface $logger,
@@ -98,15 +107,27 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->orderRepository = $orderRepository;
         $this->orderInterface = $orderInterface;
         $this->checkoutSession = $checkoutSession;
-        $this->method = $paymentHelper->getMethodInstance(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $this->paymentHelper = $paymentHelper;
         $this->messageManager = $messageManager;
         $this->configProvider = $configProvider;
+        $this->storeManager = $storeManager;
         $this->eventManager = $eventManager;
         $this->request = $request;
         $this->logger = $logger;
         $this->paystackClient = $paystackClient;
 
         parent::__construct($context);
+    }
+
+    /**
+     * @return \Magento\Payment\Model\MethodInterface
+     */
+    protected function getMethod()
+    {
+        if ($this->method === null) {
+            $this->method = $this->paymentHelper->getMethodInstance(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        }
+        return $this->method;
     }
     
     protected function redirectToFinal($successFul = true, $message="") {

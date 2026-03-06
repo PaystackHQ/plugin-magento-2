@@ -10,16 +10,31 @@ class PaystackApiClient
 {
     private const BASE_URL = 'https://api.paystack.co';
 
-    /** @var string */
+    /** @var PaymentHelper */
+    private $paymentHelper;
+
+    /** @var string|null */
     private $secretKey;
 
     public function __construct(PaymentHelper $paymentHelper)
     {
-        $method = $paymentHelper->getMethodInstance(PaystackModel::CODE);
-        $this->secretKey = $method->getConfigData('live_secret_key');
-        if ($method->getConfigData('test_mode')) {
-            $this->secretKey = $method->getConfigData('test_secret_key');
+        $this->paymentHelper = $paymentHelper;
+    }
+
+    /**
+     * @return string
+     */
+    private function getSecretKey(): string
+    {
+        if ($this->secretKey === null) {
+            $method = $this->paymentHelper->getMethodInstance(PaystackModel::CODE);
+            $this->secretKey = $method->getConfigData('live_secret_key');
+            if ($method->getConfigData('test_mode')) {
+                $this->secretKey = $method->getConfigData('test_secret_key');
+            }
+            $this->secretKey = (string) $this->secretKey;
         }
+        return $this->secretKey;
     }
 
     /**
@@ -55,7 +70,7 @@ class PaystackApiClient
      */
     public function validateWebhookSignature(string $rawBody, string $signature): bool
     {
-        $computed = hash_hmac('sha512', $rawBody, $this->secretKey);
+        $computed = hash_hmac('sha512', $rawBody, $this->getSecretKey());
         return hash_equals($computed, $signature);
     }
 
@@ -104,7 +119,7 @@ class PaystackApiClient
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->secretKey,
+                'Authorization: Bearer ' . $this->getSecretKey(),
                 'Content-Type: application/json',
             ],
             CURLOPT_TIMEOUT => 30,
