@@ -16,3 +16,4 @@ composer.phar
 # Environment
 .env
 dev/.env
+docs/
