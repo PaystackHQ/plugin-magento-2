@@ -6,6 +6,8 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\App\State;
+use Magento\Framework\App\Area;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Payment\Model\InfoInterface;
 use Magento\Quote\Api\Data\CartInterface;
@@ -18,10 +20,26 @@ class PaystackTest extends TestCase
     /** @var MockObject|ScopeConfigInterface */
     private $scopeConfig;
 
+    /** @var MockObject|State */
+    private $appState;
+
     protected function setUp(): void
     {
         $this->scopeConfig = $this->createMock(ScopeConfigInterface::class);
-        $this->model = new Paystack($this->scopeConfig);
+        $this->appState = $this->createMock(State::class);
+        // Default to frontend area for most tests
+        $this->appState->method('getAreaCode')->willReturn(Area::AREA_FRONTEND);
+        $this->model = new Paystack($this->scopeConfig, $this->appState);
+    }
+
+    /**
+     * Helper: create a Paystack instance in admin area context.
+     */
+    private function createAdminModel(): Paystack
+    {
+        $adminState = $this->createMock(State::class);
+        $adminState->method('getAreaCode')->willReturn(Area::AREA_ADMINHTML);
+        return new Paystack($this->scopeConfig, $adminState);
     }
 
     // ---- Identity ----
@@ -115,6 +133,14 @@ class PaystackTest extends TestCase
         $this->scopeConfig->method('getValue')->willReturn('0');
 
         $this->assertFalse($this->model->isAvailable());
+    }
+
+    public function testIsAvailableReturnsFalseInAdminArea(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn('1');
+
+        $adminModel = $this->createAdminModel();
+        $this->assertFalse($adminModel->isAvailable());
     }
 
     public function testCanUseInternalReturnsFalse(): void
@@ -346,8 +372,9 @@ class PaystackTest extends TestCase
         $this->assertSame($info, $this->model->getInfoInstance());
     }
 
-    public function testGetInfoInstanceReturnsNullByDefault(): void
+    public function testGetInfoInstanceThrowsWhenNotSet(): void
     {
-        $this->assertNull($this->model->getInfoInstance());
+        $this->expectException(LocalizedException::class);
+        $this->model->getInfoInstance();
     }
 }

@@ -22,7 +22,9 @@
 namespace Pstk\Paystack\Model\Payment;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\App\State;
 use Magento\Framework\DataObject;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Payment\Model\InfoInterface;
 use Magento\Payment\Model\MethodInterface;
 use Magento\Quote\Api\Data\CartInterface;
@@ -35,6 +37,11 @@ use Magento\Store\Model\ScopeInterface;
  * Adobe Commerce EE plugins on AbstractMethod cannot be inherited by this class.
  * This prevents EE-specific interceptors with frontend-only dependencies from
  * crashing admin pages such as the order-creation customer-selection grid.
+ *
+ * IMPORTANT: getInfoInstance() must throw LocalizedException when no instance
+ * is set, matching AbstractMethod's contract. EE plugins on MethodInterface
+ * rely on this exception (not a null return) to gracefully skip methods that
+ * have no associated payment info during admin page rendering.
  */
 class Paystack extends DataObject implements MethodInterface
 {
@@ -55,11 +62,16 @@ class Paystack extends DataObject implements MethodInterface
     /** @var ScopeConfigInterface */
     private $scopeConfig;
 
+    /** @var State */
+    private $appState;
+
     public function __construct(
         ScopeConfigInterface $scopeConfig,
+        State $appState,
         array $data = []
     ) {
         $this->scopeConfig = $scopeConfig;
+        $this->appState = $appState;
         parent::__construct($data);
     }
 
@@ -116,6 +128,9 @@ class Paystack extends DataObject implements MethodInterface
 
     public function isAvailable(?CartInterface $quote = null)
     {
+        if ($this->isAdminArea()) {
+            return false;
+        }
         $storeId = $quote ? $quote->getStoreId() : null;
         return $this->isActive($storeId) && $this->canUseCheckout();
     }
@@ -244,6 +259,11 @@ class Paystack extends DataObject implements MethodInterface
 
     public function getInfoInstance()
     {
+        if (!$this->infoInstance instanceof InfoInterface) {
+            throw new LocalizedException(
+                __('We cannot retrieve the payment information object instance.')
+            );
+        }
         return $this->infoInstance;
     }
 
@@ -334,5 +354,25 @@ class Paystack extends DataObject implements MethodInterface
         throw new \Magento\Framework\Exception\LocalizedException(
             __('Deny payment action is not supported by Paystack.')
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Detect whether we are running in the adminhtml area.
+     *
+     * Used as a defence-in-depth guard so that even if canUseInternal() is
+     * somehow bypassed, Paystack never surfaces as available in admin context.
+     */
+    private function isAdminArea(): bool
+    {
+        try {
+            return $this->appState->getAreaCode() === \Magento\Framework\App\Area::AREA_ADMINHTML;
+        } catch (\Magento\Framework\Exception\LocalizedException $e) {
+            // Area code not set yet (e.g. during setup:di:compile) — safe default.
+            return false;
+        }
     }
 }
