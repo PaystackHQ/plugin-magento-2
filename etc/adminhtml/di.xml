@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!--
+  Intentionally empty: this module does not register any plugins, preferences,
+  or type configuration in admin. The payment method is not available for
+  admin order creation (_canUseInternal = false), so the plugin has no impact
+  on the admin Create Order page or related MFTF tests.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+</config>

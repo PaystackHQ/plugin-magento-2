@@ -16,3 +16,8 @@ composer.phar
 # Environment
 .env
 dev/.env
+
+# Build artifact (run build-adobe-zip.sh to create)
+*.zip
+build-adobe-zip.log
+docs

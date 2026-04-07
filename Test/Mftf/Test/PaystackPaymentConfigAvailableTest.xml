@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+    <test name="PaystackPaymentConfigAvailableTest">
+        <annotations>
+            <title value="Paystack payment method is available in admin configuration"/>
+            <description value="Verify Paystack appears in Stores &gt; Configuration &gt; Sales &gt; Payment Methods when the extension is installed."/>
+            <group value="Paystack"/>
+        </annotations>
+        <before>
+            <actionGroup stepKey="loginAsAdmin" ref="LoginToAdminActionGroup">
+                <argument name="adminUser" value="admin"/>
+                <argument name="adminPassword" value="{{_ENV.MAGENTO_ADMIN_PASSWORD}}"/>
+            </actionGroup>
+        </before>
+        <amOnPage stepKey="goToPaymentConfig" url="admin/system_config/edit/section/payment"/>
+        <waitForPageLoad stepKey="waitForPaymentConfig" time="60"/>
+        <see stepKey="seePaystackSection" userInput="Paystack"/>
+        <after>
+            <amOnPage stepKey="logout" url="admin/admin/auth/logout/"/>
+        </after>
+    </test>
+</tests>

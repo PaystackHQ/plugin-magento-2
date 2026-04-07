@@ -64,7 +64,7 @@ class ConfigProvider implements ConfigProviderInterface
                     ]
                 ]
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error('Paystack ConfigProvider: ' . $e->getMessage());
             return [];
         }

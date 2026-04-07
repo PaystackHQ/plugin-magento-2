@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Self-contained admin login so the vendor test does not depend on Magento_Backend
+  action groups during MFTF generation (avoids "failed to generate" in Adobe pipeline).
+-->
+<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
+    <actionGroup name="LoginToAdminActionGroup">
+        <arguments>
+            <argument name="adminUser" type="string" defaultValue="admin"/>
+            <argument name="adminPassword" type="string" defaultValue=""/>
+        </arguments>
+        <amOnPage stepKey="navigateToAdmin" url="admin"/>
+        <waitForPageLoad stepKey="waitForAdminPage" time="30"/>
+        <fillField stepKey="fillUsername" selector="#username" userInput="{{adminUser}}"/>
+        <fillField stepKey="fillPassword" selector="#login" userInput="{{adminPassword}}"/>
+        <click stepKey="clickLogin" selector=".actions .action-primary"/>
+        <waitForPageLoad stepKey="waitForDashboard" time="30"/>
+    </actionGroup>
+</actionGroups>

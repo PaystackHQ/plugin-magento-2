@@ -26,7 +26,6 @@ if [ ! -f /var/www/html/app/etc/env.php ]; then
         --backend-frontname=admin \
         --language=en_US \
         --currency=NGN \
-        --allowed-currencies=NGN \
         --timezone=Africa/Lagos \
         --use-rewrites=1 \
         --cleanup-database

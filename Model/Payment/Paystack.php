@@ -22,21 +22,39 @@
 namespace Pstk\Paystack\Model\Payment;
 
 /**
- * Paystack main payment method model
- * 
+ * Paystack main payment method model.
+ * Intentionally not available in admin (Create Order) to avoid any impact on
+ * admin order creation UI or MFTF tests.
+ *
  * @author Olayode Ezekiel <kielsoft@gmail.com>
  */
 class Paystack extends \Magento\Payment\Model\Method\AbstractMethod
 {
 
     const CODE = 'pstk_paystack';
-    
+
     protected $_code = self::CODE;
     protected $_isOffline = true;
 
+    /**
+     * Not available for admin (internal) order creation — frontend checkout only.
+     */
+    protected $_canUseInternal = false;
+
+    /**
+     * Check whether the method is available so that it never breaks admin or checkout.
+     * Returns false on any exception to avoid breaking payment method list or layout.
+     *
+     * @param \Magento\Quote\Api\Data\CartInterface|null $quote
+     * @return bool
+     */
     public function isAvailable(
         ?\Magento\Quote\Api\Data\CartInterface $quote = null
     ) {
-        return parent::isAvailable($quote);
+        try {
+            return parent::isAvailable($quote);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }
