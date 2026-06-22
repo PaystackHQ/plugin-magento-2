@@ -21,3 +21,4 @@ dev/.env
 *.zip
 build-adobe-zip.log
 docs
+graphify-out

@@ -17,9 +17,16 @@ Or run by group:
 vendor/bin/mftf run:group Paystack
 ```
 
+Run a single storefront test by name:
+
+```bash
+vendor/bin/mftf run:test StorefrontPaystackCheckoutRendersTest
+```
+
 ## Tests
 
 - **PaystackPaymentConfigAvailableTest** – Logs in to admin (using our LoginToAdminActionGroup), opens Stores → Configuration → Sales → Payment Methods, and asserts that “Paystack” is visible.
+- **StorefrontPaystackCheckoutRendersTest** – Guest **storefront checkout** coverage. Creates a simple product, enables Paystack (inline), then drives add-to-cart → checkout → shipping → payment and asserts the checkout actually renders (no infinite loading mask) and the Paystack method appears on the payment step. This is the regression guard for the “checkout does not load” class of failure; the prior suite only covered the admin config screen.
 
 ## Action groups
 
