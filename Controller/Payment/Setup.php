@@ -51,7 +51,7 @@ class Setup extends AbstractPaystackStandard {
         $tranx = $this->paystackClient->initializeTransaction([
             'first_name' => $order->getCustomerFirstname(),
             'last_name' => $order->getCustomerLastname(),
-            'amount' => $order->getGrandTotal() * 100, // in kobo
+            'amount' => (int) round($order->getGrandTotal() * 100), // in kobo (integer, subunit)
             'email' => $order->getCustomerEmail(), // unique to customers
             'reference' => $order->getIncrementId(), // unique to transactions
             'currency' => $order->getCurrency(),
