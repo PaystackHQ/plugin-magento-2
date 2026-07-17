@@ -22,3 +22,8 @@ dev/.env
 build-adobe-zip.log
 docs
 graphify-out
+# Local dev harnesses (not committed; also excluded from the Marketplace zip by build-adobe-zip.sh)
+dev-ee
+dev-ee/*
+dev-repro
+dev-repro/*

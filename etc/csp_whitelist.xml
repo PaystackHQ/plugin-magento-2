@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+/**
+ * Whitelists Paystack domains for Content-Security-Policy (restrict mode).
+ *
+ * This is the Magento-standard mechanism (read by the core CspWhitelistXmlCollector).
+ * It ADDS host sources to the existing directives, so Magento's own defaults
+ * ('self', inline hashes, etc.) are preserved. The previous PHP PolicyCollector
+ * injected into CompositePolicyCollector replaced the whole policy set, dropping
+ * 'self' from script-src and stalling the Knockout checkout on the loader.
+ *
+ * Scope note: csp_whitelist.xml is global (there is no area-specific variant, same as
+ * core Magento_Paypal/Magento_Braintree). The entries are additive and inert in admin
+ * (admin never loads these hosts), so this does not affect the admin order-create flow.
+ *
+ * Hosts (each mapped to only the directive it actually needs — least privilege):
+ *   js.paystack.co                         script-src (Inline SDK), connect-src (SDK XHR)
+ *   api.paystack.co                        connect-src (SDK calls /checkout/request_inline etc.)
+ *   plugin-tracker.paystackintegrations.com connect-src (install/charge tracking POST)
+ *   checkout.paystack.com                  frame-src (v2 inline popup iframe — verified at runtime)
+ *   standard.paystack.co                   frame-src (Standard/redirect flow)
+ */
+-->
+<csp_whitelist xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Csp:etc/csp_whitelist.xsd">
+    <policies>
+        <policy id="script-src">
+            <values>
+                <value id="paystack_js" type="host">js.paystack.co</value>
+            </values>
+        </policy>
+        <policy id="connect-src">
+            <values>
+                <value id="paystack_api" type="host">api.paystack.co</value>
+                <value id="paystack_js" type="host">js.paystack.co</value>
+                <value id="paystack_tracker" type="host">plugin-tracker.paystackintegrations.com</value>
+            </values>
+        </policy>
+        <policy id="frame-src">
+            <values>
+                <value id="paystack_checkout" type="host">checkout.paystack.com</value>
+                <value id="paystack_standard" type="host">standard.paystack.co</value>
+            </values>
+        </policy>
+    </policies>
+</csp_whitelist>

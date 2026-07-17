@@ -19,12 +19,6 @@
         <plugin name="csrf_validator_skip" type="Pstk\Paystack\Plugin\CsrfValidatorSkip" />
     </type>
 
-    <!-- CSP: register Paystack domains via PHP collector (frontend only — Paystack is not used in admin) -->
-    <type name="Magento\Csp\Model\CompositePolicyCollector">
-        <arguments>
-            <argument name="collectors" xsi:type="array">
-                <item name="pstk-paystack-csp" xsi:type="object">Pstk\Paystack\Model\CspPolicyCollector</item>
-            </argument>
-        </arguments>
-    </type>
+    <!-- CSP: Paystack domains are whitelisted via etc/csp_whitelist.xml (the Magento-standard
+         mechanism). The former PHP PolicyCollector replaced Magento's entire CSP and stalled checkout. -->
 </config>
