@@ -103,7 +103,7 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
                 ]);
             }
             $this->logger->warning('Paystack: quoteId mismatch — order not updated');
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error('Paystack: verifyPayment exception', ['error' => $e->getMessage()]);
             return json_encode([
                 'status' => false,

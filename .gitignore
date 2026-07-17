@@ -16,3 +16,18 @@ composer.phar
 # Environment
 .env
 dev/.env
+
+# Build artifact (run build-adobe-zip.sh to create)
+*.zip
+build-adobe-zip.log
+docs
+graphify-out
+# Local dev harnesses (not committed; also excluded from the Marketplace zip by build-adobe-zip.sh)
+dev-ee
+dev-ee/*
+dev-repro
+dev-repro/*
+
+# macOS
+.DS_Store
+**/.DS_Store

@@ -10,16 +10,31 @@ class PaystackApiClient
 {
     private const BASE_URL = 'https://api.paystack.co';
 
-    /** @var string */
+    /** @var PaymentHelper */
+    private $paymentHelper;
+
+    /** @var string|null */
     private $secretKey;
 
     public function __construct(PaymentHelper $paymentHelper)
     {
-        $method = $paymentHelper->getMethodInstance(PaystackModel::CODE);
-        $this->secretKey = $method->getConfigData('live_secret_key');
-        if ($method->getConfigData('test_mode')) {
-            $this->secretKey = $method->getConfigData('test_secret_key');
+        $this->paymentHelper = $paymentHelper;
+    }
+
+    /**
+     * @return string
+     */
+    private function getSecretKey(): string
+    {
+        if ($this->secretKey === null) {
+            $method = $this->paymentHelper->getMethodInstance(PaystackModel::CODE);
+            $this->secretKey = $method->getConfigData('live_secret_key');
+            if ($method->getConfigData('test_mode')) {
+                $this->secretKey = $method->getConfigData('test_secret_key');
+            }
+            $this->secretKey = (string) $this->secretKey;
         }
+        return $this->secretKey;
     }
 
     /**
@@ -55,7 +70,7 @@ class PaystackApiClient
      */
     public function validateWebhookSignature(string $rawBody, string $signature): bool
     {
-        $computed = hash_hmac('sha512', $rawBody, $this->secretKey);
+        $computed = hash_hmac('sha512', $rawBody, $this->getSecretKey());
         return hash_equals($computed, $signature);
     }
 
@@ -85,7 +100,6 @@ class PaystackApiClient
             CURLOPT_TIMEOUT => 5,
         ]);
         curl_exec($ch);
-        curl_close($ch);
     }
 
     /**
@@ -104,7 +118,7 @@ class PaystackApiClient
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->secretKey,
+                'Authorization: Bearer ' . $this->getSecretKey(),
                 'Content-Type: application/json',
             ],
             CURLOPT_TIMEOUT => 30,
@@ -119,12 +133,15 @@ class PaystackApiClient
 
         if (curl_errno($ch)) {
             $error = curl_error($ch);
-            curl_close($ch);
             throw new ApiException('Paystack API request failed: ' . $error);
         }
 
         $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        // Note: curl_close() is intentionally omitted. Since PHP 8.0 the curl handle is a
+        // \CurlHandle object that is freed automatically, and calling curl_close() emits a
+        // deprecation notice on PHP 8.5 which Magento escalates to an exception — that was
+        // aborting verifyPayment() after a successful charge ("payment verification failed"
+        // while the payment went through).
 
         $body = json_decode($response);
 

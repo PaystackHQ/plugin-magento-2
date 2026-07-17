@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+/**
+ * Copyright © Paystack. All rights reserved.
+ * See LICENSE for license details.
+ */
+-->
+<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+    <test name="PaystackPaymentConfigAvailableTest">
+        <annotations>
+            <features value="Paystack"/>
+            <stories value="Payment Configuration"/>
+            <title value="Paystack payment method is available in admin configuration"/>
+            <description value="Verify Paystack appears in Stores > Configuration > Sales > Payment Methods when the extension is installed."/>
+            <severity value="MAJOR"/>
+            <group value="Paystack"/>
+        </annotations>
+
+        <before>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="loginAsAdmin"/>
+            <magentoCLI command="cache:clean config" stepKey="cleanConfigCache"/>
+        </before>
+
+        <after>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
+        </after>
+
+        <amOnPage url="{{PaystackPaymentConfigPage.url}}" stepKey="goToPaymentConfig"/>
+        <waitForPageLoad time="60" stepKey="waitForPaymentConfig"/>
+        <see userInput="Paystack" stepKey="seePaystackSection"/>
+    </test>
+</tests>

@@ -3,21 +3,36 @@ namespace Pstk\Paystack\Model\Ui;
 
 use Magento\Checkout\Model\ConfigProviderInterface;
 use Magento\Payment\Helper\Data as PaymentHelper;
-use Magento\Store\Model\Store as Store;
+use Magento\Store\Model\StoreManagerInterface;
+use Psr\Log\LoggerInterface;
 
-/**
- * Class ConfigProvider
- */
 class ConfigProvider implements ConfigProviderInterface
 {
 
-    protected $method;
-    protected $store;
+    protected $paymentHelper;
+    protected $storeManager;
+    protected $logger;
+    private $method;
 
-    public function __construct(PaymentHelper $paymentHelper, Store $store)
+    public function __construct(
+        PaymentHelper $paymentHelper,
+        StoreManagerInterface $storeManager,
+        LoggerInterface $logger
+    ) {
+        $this->paymentHelper = $paymentHelper;
+        $this->storeManager = $storeManager;
+        $this->logger = $logger;
+    }
+
+    /**
+     * @return \Magento\Payment\Model\MethodInterface
+     */
+    private function getMethod()
     {
-        $this->method = $paymentHelper->getMethodInstance(\Pstk\Paystack\Model\Payment\Paystack::CODE);
-        $this->store = $store;
+        if ($this->method === null) {
+            $this->method = $this->paymentHelper->getMethodInstance(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        }
+        return $this->method;
     }
 
     /**
@@ -27,51 +42,57 @@ class ConfigProvider implements ConfigProviderInterface
      */
     public function getConfig()
     {
-        $publicKey = $this->method->getConfigData('live_public_key');
-        if ($this->method->getConfigData('test_mode')) {
-            $publicKey = $this->method->getConfigData('test_public_key');
-        }
-        
-        $integrationType = $this->method->getConfigData('integration_type')?: 'inline';
+        try {
+            $method = $this->getMethod();
 
-        return [
-            'payment' => [
-                \Pstk\Paystack\Model\Payment\Paystack::CODE => [
-                    'public_key' => $publicKey,
-                    'integration_type' => $integrationType,
-                    'api_url' => $this->store->getBaseUrl() . 'rest/',
-                    'integration_type_standard_url' => $this->store->getBaseUrl() . 'paystack/payment/setup',
-                    'recreate_quote_url' => $this->store->getBaseUrl() . 'paystack/payment/recreate',
+            $publicKey = $method->getConfigData('live_public_key');
+            if ($method->getConfigData('test_mode')) {
+                $publicKey = $method->getConfigData('test_public_key');
+            }
+
+            $integrationType = $method->getConfigData('integration_type') ?: 'inline';
+            $baseUrl = $this->storeManager->getStore()->getBaseUrl();
+
+            return [
+                'payment' => [
+                    \Pstk\Paystack\Model\Payment\Paystack::CODE => [
+                        'public_key' => $publicKey,
+                        'integration_type' => $integrationType,
+                        'api_url' => $baseUrl . 'rest/',
+                        'integration_type_standard_url' => $baseUrl . 'paystack/payment/setup',
+                        'recreate_quote_url' => $baseUrl . 'paystack/payment/recreate',
+                    ]
                 ]
-            ]
-        ];
+            ];
+        } catch (\Throwable $e) {
+            $this->logger->error('Paystack ConfigProvider: ' . $e->getMessage());
+            return [];
+        }
     }
-    
-    public function getStore() {
-        return $this->store;
-    }
-    
+
     /**
      * Get secret key for webhook process
-     * 
+     *
      * @return array
      */
-    public function getSecretKeyArray(){
-        $data = ["live" => $this->method->getConfigData('live_secret_key')];
-        if ($this->method->getConfigData('test_mode')) {
-            $data = ["test" => $this->method->getConfigData('test_secret_key')];
+    public function getSecretKeyArray()
+    {
+        $method = $this->getMethod();
+        $data = ["live" => $method->getConfigData('live_secret_key')];
+        if ($method->getConfigData('test_mode')) {
+            $data = ["test" => $method->getConfigData('test_secret_key')];
         }
-        
+
         return $data;
     }
 
-    public function getPublicKey(){
-        $publicKey = $this->method->getConfigData('live_public_key');
-        if ($this->method->getConfigData('test_mode')) {
-            $publicKey = $this->method->getConfigData('test_public_key');
+    public function getPublicKey()
+    {
+        $method = $this->getMethod();
+        $publicKey = $method->getConfigData('live_public_key');
+        if ($method->getConfigData('test_mode')) {
+            $publicKey = $method->getConfigData('test_public_key');
         }
         return $publicKey;
     }
-    
-    
 }
