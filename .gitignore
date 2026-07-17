@@ -27,3 +27,7 @@ dev-ee
 dev-ee/*
 dev-repro
 dev-repro/*
+
+# macOS
+.DS_Store
+**/.DS_Store

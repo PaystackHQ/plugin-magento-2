@@ -10,10 +10,9 @@
   and the Paystack method appears. If the checkout hangs on the loading mask (the
   symptom reported in manual QA), the waitForElement steps time out and this fails.
 
-  Kept self-contained on purpose: raw actions + core createData only, no dependency on
-  Magento_Checkout/Magento_Catalog ACTION GROUPS, which have failed to generate in the
-  Adobe pipeline (see LoginToAdminActionGroup.xml note). Selectors are the stock Luma
-  checkout selectors.
+  Uses raw actions + core createData and the stock Luma checkout selectors. amOnPage
+  URLs are base-relative (leading slash) so they resolve against the site root rather
+  than the current page.
 -->
 <tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
@@ -37,14 +36,14 @@
         </before>
 
         <!-- 1. Add the product to the cart from its storefront page. -->
-        <amOnPage url="$$createProduct.custom_attributes[url_key]$$.html" stepKey="goToProduct"/>
+        <amOnPage url="/$$createProduct.custom_attributes[url_key]$$.html" stepKey="goToProduct"/>
         <waitForPageLoad time="60" stepKey="waitForProductPage"/>
         <click selector="#product-addtocart-button" stepKey="addToCart"/>
         <waitForElementVisible selector=".message-success" time="60" stepKey="waitForAddedToCart"/>
 
         <!-- 2. Proceed to checkout. The shipping form must render (this is where the
                 reported hang occurs: a never-resolving loading mask). -->
-        <amOnPage url="checkout/" stepKey="goToCheckout"/>
+        <amOnPage url="/checkout/" stepKey="goToCheckout"/>
         <waitForPageLoad time="60" stepKey="waitForCheckoutPage"/>
         <waitForElementVisible selector="#customer-email" time="60" stepKey="assertCheckoutRendered"/>
 

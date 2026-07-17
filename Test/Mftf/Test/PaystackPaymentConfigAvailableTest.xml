@@ -8,16 +8,23 @@
             <group value="Paystack"/>
         </annotations>
         <before>
-            <actionGroup stepKey="loginAsAdmin" ref="LoginToAdminActionGroup">
-                <argument name="adminUser" value="admin"/>
-                <argument name="adminPassword" value="{{_ENV.MAGENTO_ADMIN_PASSWORD}}"/>
-            </actionGroup>
+            <!--
+              Use Magento's standard admin login. The Adobe pipeline's own
+              mftfmagento suite uses this action group and passes, so the prior
+              concern about core action groups "failing to generate" does not hold.
+            -->
+            <actionGroup stepKey="loginAsAdmin" ref="AdminLoginActionGroup"/>
         </before>
-        <amOnPage stepKey="goToPaymentConfig" url="admin/system_config/edit/section/payment"/>
+        <!--
+          Navigate via the area="admin" page object so MFTF emits a leading-slash,
+          base-relative URL. A raw <amOnPage url="admin/..."/> resolves relative to
+          the post-login dashboard and 404s (the original submission failure).
+        -->
+        <amOnPage stepKey="goToPaymentConfig" url="{{AdminPaymentConfigPage.url}}"/>
         <waitForPageLoad stepKey="waitForPaymentConfig" time="60"/>
         <see stepKey="seePaystackSection" userInput="Paystack"/>
         <after>
-            <amOnPage stepKey="logout" url="admin/admin/auth/logout/"/>
+            <actionGroup stepKey="logout" ref="AdminLogoutActionGroup"/>
         </after>
     </test>
 </tests>
