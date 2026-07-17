@@ -100,7 +100,6 @@ class PaystackApiClient
             CURLOPT_TIMEOUT => 5,
         ]);
         curl_exec($ch);
-        curl_close($ch);
     }
 
     /**
@@ -134,12 +133,15 @@ class PaystackApiClient
 
         if (curl_errno($ch)) {
             $error = curl_error($ch);
-            curl_close($ch);
             throw new ApiException('Paystack API request failed: ' . $error);
         }
 
         $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        // Note: curl_close() is intentionally omitted. Since PHP 8.0 the curl handle is a
+        // \CurlHandle object that is freed automatically, and calling curl_close() emits a
+        // deprecation notice on PHP 8.5 which Magento escalates to an exception — that was
+        // aborting verifyPayment() after a successful charge ("payment verification failed"
+        // while the payment went through).
 
         $body = json_decode($response);
 
