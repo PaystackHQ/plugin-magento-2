@@ -25,9 +25,9 @@ vendor/bin/mftf run:test StorefrontPaystackCheckoutRendersTest
 
 ## Tests
 
-- **PaystackPaymentConfigAvailableTest** – Logs in to admin (`AdminLoginActionGroup`), opens Stores → Configuration → Sales → Payment Methods via the `AdminPaymentConfigPage` page object, and asserts that “Paystack” is visible.
+- **PaystackPaymentConfigAvailableTest** – Logs in to admin (`AdminLoginActionGroup`), opens Stores → Configuration → Sales → Payment Methods via the `PaystackPaymentConfigPage` page object, and asserts that “Paystack” is visible.
 - **StorefrontPaystackCheckoutRendersTest** – Guest **storefront checkout** coverage. Creates a simple product, enables Paystack (inline), then drives add-to-cart → checkout → shipping → payment and asserts the checkout actually renders (no infinite loading mask) and the Paystack method appears on the payment step. This is the regression guard for the “checkout does not load” class of failure; the prior suite only covered the admin config screen.
 
 ## Pages
 
-- **AdminPaymentConfigPage** – `area="admin"` page object for the Payment Methods config section. Using a page object (rather than a raw `admin/...` `amOnPage` string) makes MFTF emit a leading-slash, base-relative URL, avoiding the `/admin/admin/...` noRoute 404 that failed the original submission.
+- **PaystackPaymentConfigPage** – `area="admin"` page object for the Payment Methods config section. Using a page object (rather than a raw `admin/...` `amOnPage` string) makes MFTF emit a leading-slash, base-relative URL, avoiding the `/admin/admin/...` noRoute 404 that failed the original submission.
