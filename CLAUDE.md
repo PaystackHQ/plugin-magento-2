@@ -18,9 +18,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Output: pstk-paystack-magento2-module-<version>.zip
 ```
 
-`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `dev/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
+`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `dev/`, `dev-ee/`, `dev-repro/`, `marketplace/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
 
-> ⚠️ **The exclusion list does NOT include `dev-ee/`** (added after the script was written). A fresh build will bundle the entire EE test harness into the Marketplace zip. Add `-x "dev-ee/*"` before building a release, or the harness will ship. (The committed `pstk-paystack-magento2-module-3.0.8.zip` predates `dev-ee/`, so it is clean.)
+> ⚠️ **Anything added to the repo root after the build script was written must be added to its exclusion list explicitly.** This has already gone wrong once: `dev-ee/` was created after the script and had to be retro-fitted before a release could ship without bundling the entire EE harness. When you add a new top-level directory that is not package content, add its `-x` line **in the same commit**.
 
 ### Versioning
 
@@ -28,6 +28,20 @@ The version string lives in **three** places that must be kept in sync on a vers
 - `composer.json` (`version`) — source of truth used by the build script
 - `etc/module.xml` (`setup_version` on `<module>`)
 - `README.md` (the **Version:** line)
+
+The Marketplace documentation is deliberately **not** a fourth: `marketplace/bin/build-guide.sh` injects the version from `composer.json` at build time, and no file in `marketplace/src/` contains a version string. Keep it that way.
+
+## Marketplace Listing Collateral
+
+`marketplace/` holds everything uploaded to the Adobe submission that is **not** the extension package, laid out as `src/` (Markdown sources), `pdf/` (generated, committed), and `bin/` (build script, stdlib-only Markdown converter, print CSS), plus `long-description.md` recording the listing copy.
+
+Three documents are uploaded, matching Adobe's slots: **Installation Guide** (getting it installed), **User Guide** (configuring and operating), **Reference Manual** (config paths, routes, events, webhook signature, CSP hosts, DI scoping). They must stay distinct — the marketing review guidelines reject duplicate documents while also requiring documentation to cover all features, so content belongs in exactly one and is cross-referenced from the others.
+
+Regenerate with `./marketplace/bin/build-guide.sh` (needs `python3` and any Chromium-family browser; PDFs are committed so a missing browser never blocks an upload).
+
+Conventions there are load-bearing, from Adobe's August 2026 marketing-review rejection of submission `fc2xb678ho`: document titles read **"Paystack Payments for Magento 2"** with the document type as subtitle, never Magento-first; no Adobe or Magento logos; and Long Description bullets must be re-entered using the Marketplace editor's own bullet button rather than pasted. See `marketplace/README.md`.
+
+The guides are merchant-facing and intentionally diverge from `README.md` — they omit the Docker development environment and contribution sections. Changes to one do not automatically belong in the other.
 
 ## Development Environment
 

@@ -16,10 +16,13 @@ rm -f "$ZIP"
 # Exclude dev assets, internal docs, archives, and any built zips.
 # docs/ holds internal QA artifacts (review logs, recordings) and must never ship.
 # graphify-out/ is gitignored internal knowledge-graph tooling cache — must never ship.
+# marketplace/ is Adobe listing collateral (user guide source + PDF, listing copy);
+# it is uploaded to the submission separately and is not package content.
 zip -r "$ZIP" . \
   -x "*.git*" \
   -x "*.DS_Store" \
   -x "dev/*" \
+  -x "marketplace/*" \
   -x "dev-ee/*" \
   -x "dev-repro/*" \
   -x "vendor/*" \
