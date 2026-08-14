@@ -83,7 +83,7 @@ The endpoint is anonymous because it is called by the checkout JavaScript immedi
 
 Paystack sends `charge.success` events to `/paystack/payment/webhook` as an HTTP POST.
 
-Each request carries an `x-paystack-signature` header containing an HMAC-SHA512 digest of the raw request body, computed with your Paystack secret key. The module validates this signature before processing and rejects requests that fail. The transaction is then independently verified against the Paystack API.
+Each request carries an `X-Paystack-Signature` header containing an HMAC-SHA512 digest of the raw request body, computed with your Paystack secret key. The module validates this signature with a timing-safe comparison before processing, and rejects requests that fail. The transaction is then independently verified against the Paystack API.
 
 Magento's form-key CSRF validation is skipped for this route via `Plugin\CsrfValidatorSkip`, because the request originates from Paystack rather than from a browser session. Signature validation is what authenticates the request.
 

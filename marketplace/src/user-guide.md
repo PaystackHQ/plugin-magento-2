@@ -33,6 +33,8 @@ Secret keys are stored encrypted by Magento and are never displayed again after 
 
 **Redirect** sends the customer to a Paystack-hosted payment page and returns them to your store when payment finishes. Choose this if your theme or a third-party checkout extension interferes with the inline window.
 
+Paystack works with popular one-step checkout extensions. If you use one and the inline window does not open within it, switch to Redirect.
+
 Both are fully PCI-compliant. Card details are never entered on, or stored by, your store — they are captured by Paystack directly.
 
 If a customer abandons a redirect payment, they are returned to the checkout payment step with their cart intact so they can try again.
