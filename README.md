@@ -2,9 +2,9 @@
 [![Software License][ico-license]](LICENSE)
 [![Total Downloads][ico-downloads]][link-downloads]
 
-## Paystack Magento 2 Module
+## Paystack Payments for Magento 2
 
-Paystack payment gateway Magento2 extension
+Paystack payment gateway extension for Magento 2
 
 **Version:** 3.0.10 (Paystack v2 Inline.js API)
 
