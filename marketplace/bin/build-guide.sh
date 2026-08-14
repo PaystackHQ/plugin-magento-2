@@ -6,9 +6,10 @@
 # Builds every document by default, or just the ones named:
 #   ./marketplace/bin/build-guide.sh user-guide reference-manual
 #
-# The generated PDFs are committed alongside their sources, so a missing
-# browser never stands between someone and an upload-ready file. Regenerate
-# whenever you change a file in ../src or guide.css.
+# The PDFs are generated artifacts and are NOT tracked in git (../pdf is
+# gitignored, same as the package zip). The Markdown in ../src is the tracked
+# original. Run this before uploading to the submission, so what you upload
+# matches the current sources.
 #
 # Deliberately NOT wired into build-adobe-zip.sh: these are listing collateral,
 # not package content, and coupling them would make every package build require

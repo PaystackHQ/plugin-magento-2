@@ -33,11 +33,11 @@ The Marketplace documentation is deliberately **not** a fourth: `marketplace/bin
 
 ## Marketplace Listing Collateral
 
-`marketplace/` holds everything uploaded to the Adobe submission that is **not** the extension package, laid out as `src/` (Markdown sources), `pdf/` (generated, committed), and `bin/` (build script, stdlib-only Markdown converter, print CSS), plus `long-description.md` recording the listing copy.
+`marketplace/` holds everything uploaded to the Adobe submission that is **not** the extension package, laid out as `src/` (Markdown sources — the tracked originals), `pdf/` (generated, **gitignored** like the package zip), and `bin/` (build script, stdlib-only Markdown converter, print CSS), plus `long-description.md` recording the listing copy.
 
 Three documents are uploaded, matching Adobe's slots: **Installation Guide** (getting it installed), **User Guide** (configuring and operating), **Reference Manual** (config paths, routes, events, webhook signature, CSP hosts, DI scoping). They must stay distinct — the marketing review guidelines reject duplicate documents while also requiring documentation to cover all features, so content belongs in exactly one and is cross-referenced from the others.
 
-Regenerate with `./marketplace/bin/build-guide.sh` (needs `python3` and any Chromium-family browser; PDFs are committed so a missing browser never blocks an upload).
+Regenerate with `./marketplace/bin/build-guide.sh` (needs `python3` and any Chromium-family browser). Run it before every upload — a fresh checkout has no PDFs, which is deliberate: a committed PDF goes stale silently when a source changes without a rebuild.
 
 Conventions there are load-bearing, from Adobe's August 2026 marketing-review rejection of submission `fc2xb678ho`: document titles read **"Paystack Payments for Magento 2"** with the document type as subtitle, never Magento-first; no Adobe or Magento logos; and Long Description bullets must be re-entered using the Marketplace editor's own bullet button rather than pasted. See `marketplace/README.md`.
 

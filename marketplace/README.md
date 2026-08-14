@@ -15,7 +15,7 @@ marketplace/
 │   ├── installation-guide.md
 │   ├── user-guide.md
 │   └── reference-manual.md
-├── pdf/                  Generated PDFs — upload these, committed
+├── pdf/                  Generated PDFs — upload these (gitignored)
 ├── bin/                  Tooling
 │   ├── build-guide.sh    Regenerates the PDFs
 │   ├── md2html.py        Markdown → HTML (stdlib only)
@@ -35,9 +35,12 @@ Requires `python3` (stdlib only) and any Chromium-family browser. The script
 probes for Chrome, Chromium, Edge and Brave; override with
 `CHROME=/path/to/binary ./marketplace/bin/build-guide.sh`.
 
-The generated PDFs are committed deliberately, so a missing browser never
-stands between someone and an upload-ready file. Commit regenerated PDFs
-along with whatever source change prompted them.
+**Run this before every upload.** `pdf/` is gitignored — the PDFs are
+generated artifacts, exactly like the package zip, and the Markdown in `src/`
+is the tracked original. A fresh checkout has no PDFs until you build them,
+which is deliberate: a committed PDF can go stale silently when someone edits
+a source and forgets to rebuild, and a stale binary in the repo reads as
+authoritative.
 
 ## The three documents
 
