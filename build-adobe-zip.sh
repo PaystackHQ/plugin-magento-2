@@ -21,6 +21,7 @@ rm -f "$ZIP"
 zip -r "$ZIP" . \
   -x "*.git*" \
   -x "*.DS_Store" \
+  -x ".claude/*" \
   -x "dev/*" \
   -x "marketplace/*" \
   -x "dev-ee/*" \

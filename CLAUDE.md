@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Output: pstk-paystack-magento2-module-<version>.zip
 ```
 
-`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `dev/`, `dev-ee/`, `dev-repro/`, `marketplace/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
+`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `.claude/`, `dev/`, `dev-ee/`, `dev-repro/`, `marketplace/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
 
 > ⚠️ **Anything added to the repo root after the build script was written must be added to its exclusion list explicitly.** This has already gone wrong once: `dev-ee/` was created after the script and had to be retro-fitted before a release could ship without bundling the entire EE harness. When you add a new top-level directory that is not package content, add its `-x` line **in the same commit**.
 
