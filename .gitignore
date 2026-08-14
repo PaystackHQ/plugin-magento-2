@@ -20,6 +20,9 @@ dev/.env
 # Build artifact (run build-adobe-zip.sh to create)
 *.zip
 build-adobe-zip.log
+# Generated docs (run marketplace/bin/build-guide.sh to create) — sources in
+# marketplace/src are the tracked originals
+marketplace/pdf/
 docs
 graphify-out
 # Local dev harnesses (not committed; also excluded from the Marketplace zip by build-adobe-zip.sh)

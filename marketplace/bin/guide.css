@@ -1,0 +1,123 @@
+/* Print styling for the Marketplace user guide PDF.
+   Consumed by build-guide.sh; not shipped in the extension package. */
+
+@page { size: A4; margin: 18mm 16mm; }
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+h1 {
+  font-size: 21pt;
+  line-height: 1.2;
+  margin: 0 0 2pt;
+  color: #011b33;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 11.5pt;
+  color: #4a5b6b;
+  margin: 0 0 14pt;
+}
+
+.version {
+  display: inline-block;
+  font-size: 9pt;
+  color: #011b33;
+  background: #e8f4fb;
+  border: 1px solid #b8dcf0;
+  border-radius: 3px;
+  padding: 3pt 7pt;
+  margin-bottom: 20pt;
+}
+
+h2 {
+  font-size: 14pt;
+  margin: 22pt 0 7pt;
+  padding-bottom: 4pt;
+  border-bottom: 1px solid #dde3e8;
+  color: #011b33;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-size: 11.5pt;
+  margin: 15pt 0 5pt;
+  color: #011b33;
+  page-break-after: avoid;
+}
+
+p { margin: 0 0 9pt; }
+
+ul, ol { margin: 0 0 9pt; padding-left: 20pt; }
+li { margin-bottom: 3pt; }
+li > ul { margin-top: 3pt; margin-bottom: 3pt; }
+
+a { color: #0a6ed1; text-decoration: none; word-break: break-word; }
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9pt;
+  background: #f4f6f8;
+  border: 1px solid #e2e7ec;
+  border-radius: 3px;
+  padding: 1pt 4pt;
+}
+
+pre {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8.75pt;
+  line-height: 1.45;
+  background: #f7f9fa;
+  border: 1px solid #e2e7ec;
+  border-left: 3px solid #011b33;
+  border-radius: 3px;
+  padding: 9pt 11pt;
+  margin: 0 0 10pt;
+  white-space: pre-wrap;
+  word-break: break-word;
+  page-break-inside: avoid;
+}
+
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 12pt;
+  font-size: 9.5pt;
+}
+
+/* Long reference tables are allowed to break across pages — forcing them whole
+   leaves half-empty pages. Rows stay intact and the header repeats instead. */
+thead { display: table-header-group; }
+tr { page-break-inside: avoid; }
+
+thead th {
+  text-align: left;
+  font-weight: 600;
+  color: #011b33;
+  background: #f4f6f8;
+  border-bottom: 1.5px solid #cdd6de;
+  padding: 5pt 7pt;
+}
+
+tbody td {
+  border-bottom: 1px solid #e6ebef;
+  padding: 4.5pt 7pt;
+  vertical-align: top;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+table code { font-size: 8.5pt; }
+
+strong { font-weight: 600; color: #011b33; }
+em { font-style: italic; }
