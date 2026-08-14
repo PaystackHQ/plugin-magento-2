@@ -187,12 +187,14 @@ def convert(markdown, version):
             out.append("<li>%s" % render_inline(body))
             continue
 
-        # A plain line continuing a list item wraps into that item; otherwise
-        # it accumulates into the current paragraph.
-        if stack and not para_buf:
+        # An *indented* plain line continues the open list item. A flush-left
+        # line ends the list instead — otherwise every paragraph following a
+        # list gets swallowed into its final bullet.
+        if stack and raw.startswith((" ", "\t")) and not para_buf:
             out.append(" " + render_inline(line))
             continue
 
+        close_lists()
         flush_table()
         para_buf.append(line.strip())
 

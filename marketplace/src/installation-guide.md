@@ -49,7 +49,7 @@ php bin/magento setup:di:compile
 php bin/magento cache:flush
 ```
 
-3. In production mode, redeploy static content as shown above.
+In production mode, redeploy static content as shown above.
 
 ## Verify the Installation
 
