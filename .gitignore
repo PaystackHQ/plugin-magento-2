@@ -8,6 +8,21 @@
 composer.phar
 /vendor/
 
+# CI-only unit-test dependencies (Test/Unit/composer.json) — never shipped.
+# Test/Unit/composer.lock IS committed on purpose: it pins all 184 packages so the
+# gate resolves the same set every run. The reasons for not committing the *root*
+# lock do not apply here — build-adobe-zip.sh excludes Test/Unit/*, so this lock
+# ships nothing and constrains no merchant.
+Test/Unit/vendor/
+Test/Unit/.phpunit.cache/
+
+# Composer credentials. Composer reads auth.json from the project directory, so
+# Test/Unit/ is where a real Adobe key would actually be placed. Neither belongs
+# in a public repo. (The tracked root auth.json holds placeholders and is filed
+# for removal separately.)
+auth.json
+Test/Unit/auth.json
+
 # Random files
 *~
 \#*

@@ -32,6 +32,12 @@ services:
       - PAYSTACK_TEST_SK=${PAYSTACK_TEST_SK}
     volumes:
       - ..:/var/www/html/app/code/Pstk/Paystack
+      # Mask the unit-test dependency tree. The whole repo is mounted as a Magento
+      # module, and `cd Test/Unit && composer install` puts a second full
+      # magento/framework (184 packages) inside it — which setup:di:compile would
+      # then scan as module source, hitting duplicate class declarations. An
+      # anonymous volume keeps it out of the container entirely.
+      - /var/www/html/app/code/Pstk/Paystack/Test/Unit/vendor
     depends_on:
       - db
       - search

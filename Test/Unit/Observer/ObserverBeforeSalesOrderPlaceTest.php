@@ -36,11 +36,9 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
             ->method('setCustomerNoteNotify')
             ->with(false);
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }
@@ -54,11 +52,9 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
         $order->method('getPayment')->willReturn($payment);
         $order->expects($this->never())->method('setCanSendNewEmailFlag');
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }
@@ -67,12 +63,16 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
     {
         $order = $this->createMock(Order::class);
         $order->method('getPayment')->willReturn(null);
+        // This case genuinely only guarantees "does not throw": remove the
+        // `$order->getPayment() &&` guard from the production code and null->getMethod()
+        // throws before setCanSendNewEmailFlag is reachable, so the test fails on that
+        // Error rather than on the never(). The distinguishing negative case — a real
+        // payment for a different method — is testNonPaystackOrderDoesNotSuppressEmail.
+        $order->expects($this->never())->method('setCanSendNewEmailFlag');
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }

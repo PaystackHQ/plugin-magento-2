@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **PHP namespace**: `Pstk\Paystack`
 - **Composer package**: `pstk/paystack-magento2-module`
 - **Magento payment method code**: `pstk_paystack` (constant `Pstk\Paystack\Model\Payment\Paystack::CODE`)
-- **Requires**: Magento 2.4.x, PHP 8.2+ (this is the supported target, but note `composer.json` has an empty `require: {}` — these constraints are **not** enforced by Composer)
+- **Requires**: Magento 2.4.x, PHP 8.2+ per README — but treat that claim as **unverified**: `magento/framework 103.0.9` (the 2.4.9 line) requires `~8.3.0||~8.4.0||~8.5.0`, so PHP 8.2 cannot even install it, and CI covers 8.5 only. `composer.json` has an empty `require: {}`, so none of this is enforced by Composer.
 
 ## Build
 
@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Output: pstk-paystack-magento2-module-<version>.zip
 ```
 
-`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `.claude/`, `dev/`, `dev-ee/`, `dev-repro/`, `marketplace/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
+`build-adobe-zip.sh` reads the version from `composer.json` and always rebuilds from scratch (removes any stale zip first). Its exclusion list is `.git*`, `.DS_Store`, `.claude/`, `dev/`, `dev-ee/`, `dev-repro/`, `marketplace/`, `vendor/`, `.env`, `auth.json`, `CLAUDE.md`, `docs/`, `graphify-out/`, `node_modules/`, `phpunit.xml`, `Test/Unit/`, the build script itself, and prior `*.zip` builds — so `CLAUDE.md`, internal QA artifacts, and tooling caches never ship to Marketplace.
 
 > ⚠️ **Anything added to the repo root after the build script was written must be added to its exclusion list explicitly.** This has already gone wrong once: `dev-ee/` was created after the script and had to be retro-fitted before a release could ship without bundling the entire EE harness. When you add a new top-level directory that is not package content, add its `-x` line **in the same commit**.
 
@@ -76,9 +76,26 @@ vendor/bin/mftf run:test PaystackPaymentConfigAvailableTest
 vendor/bin/mftf run:test StorefrontPaystackCheckoutRendersTest
 ```
 
-Current tests (`Test/Mftf/Test/`): `PaystackPaymentConfigAvailableTest.xml` and `StorefrontPaystackCheckoutRendersTest.xml`, backed by the page object `Test/Mftf/Page/AdminPaymentConfigPage.xml`. `Test/Mftf/Suite/` exists but is **empty** — there are no suites, so `vendor/bin/mftf run:suite` has nothing to run.
+Current tests (`Test/Mftf/Test/`): `PaystackPaymentConfigAvailableTest.xml` and `StorefrontPaystackCheckoutRendersTest.xml`, backed by the page object `Test/Mftf/Page/PaystackPaymentConfigPage.xml`. `Test/Mftf/Suite/` exists but is **empty** — there are no suites, so `vendor/bin/mftf run:suite` has nothing to run.
 
-There are no unit tests — the test suite is entirely MFTF (browser-level functional tests). There is no configured linter or static-analysis tooling (no PHPCS/PHPStan config, no composer `scripts`); match the surrounding code style by hand. The only CI is `.github/workflows/codeql-analysis.yml` (CodeQL security scanning).
+### Unit tests
+
+There are 98 PHPUnit tests in `Test/Unit/`, and they are **not runnable from a fresh checkout** — the shipped `composer.json` has an empty `require` block and no `require-dev` on purpose. The test dependencies live in a CI-only manifest:
+
+```bash
+cd Test/Unit && composer install    # 184 packages, pinned by the committed lock
+cd - && Test/Unit/vendor/bin/phpunit -c phpunit.xml --no-coverage
+```
+
+Do **not** move those deps into the root `composer.json`: the committed root `composer.lock` has a stale content-hash (it locks `yabacon/paystack-php`, a package absent from `require`), so `composer install` would refuse until regenerated — and the regenerated lock ships in the Marketplace zip. 3.0.10 passed Adobe review with an empty `require`; keep that surface untouched.
+
+`phpunit.xml` at the repo root is the single config shared by CI and local runs. It bootstraps `Test/Unit/vendor/autoload.php` and excludes `Test/Unit/vendor` from discovery, because `magento/framework` ships its own `*Test.php` files that fatal when loaded. Its cache lives in `Test/Unit/.phpunit.cache` so it cannot leak into the package.
+
+`dev/docker-compose.yml` masks `Test/Unit/vendor` with an anonymous volume — the repo is bind-mounted as a Magento module, and a second `magento/framework` inside it would be scanned by `setup:di:compile`. **`dev-repro/` needs the same line but is gitignored and untracked**, so that fix is local-only; anyone recreating `dev-repro/` must re-add it.
+
+There is no configured linter or static-analysis tooling (no PHPCS/PHPStan config, no composer `scripts`); match the surrounding code style by hand.
+
+CI is `.github/workflows/phpunit.yml` (unit tests, PHP 8.5) and `.github/workflows/codeql-analysis.yml` (CodeQL — note it scans **JavaScript only**, so the PHP money path gets no static analysis, and it still pins retired action/CodeQL v1 versions).
 
 The `docs/` directory (gitignored, never shipped) holds local MFTF Allure report artifacts (`mftfmagento/`, `mftfvendor/`) plus the `EE-NO-MODULE-BASELINE.md` analysis — it is not module code.
 

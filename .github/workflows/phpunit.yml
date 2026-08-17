@@ -1,0 +1,86 @@
+name: PHPUnit
+
+on:
+  push:
+    branches: [ master ]
+  # Deliberately unfiltered by base branch: the money-path work lands as a stack of
+  # PRs targeting feature branches, and those are exactly the diffs this suite
+  # exists to gate. A `branches: [master]` filter would skip every one of them.
+  pull_request:
+
+# Least privilege: this job only needs to read the checkout. Without an explicit
+# block the job inherits the repository default GITHUB_TOKEN scope, which on many
+# repos is read/write. Deliberately `pull_request`, not `pull_request_target`, so a
+# fork's code never runs with a writable token or access to secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: phpunit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One version, and adding a second is not just a matter of listing it.
+        # Test/Unit/composer.lock pins the tree that was resolved on 8.5, and some
+        # transitive packages in it require >= 8.4.1 — so an 8.3 leg installing from
+        # this lock fails on platform requirements, and installing *without* the
+        # lock would defeat the point of pinning it. A second leg needs its own
+        # lock (or an older framework pin); until someone has watched that go
+        # green, listing it would just be a permanently red check.
+        #
+        # 8.5 is what Adobe QA and dev-repro/ run, and it is the version this
+        # suite is verified on. Note README/CLAUDE.md advertise "PHP 8.2+", which
+        # CI therefore does not cover — reconcile the claim or the coverage.
+        php: [ '8.5' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:2.9
+
+      # Cache Composer's download cache, not vendor/: a restored vendor/ is code
+      # that gets autoloaded and executed, and with an immutable key it would
+      # outlive any upstream fix. The download cache is content-addressed and the
+      # lock is what guarantees which packages get installed.
+      - name: Cache Composer downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-php${{ matrix.php }}-composer-${{ hashFiles('Test/Unit/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php${{ matrix.php }}-composer-
+
+      # Test/Unit/composer.json + .lock are a CI-only manifest resolving against
+      # mirror.mage-os.org (no Adobe auth needed). They must never be merged into
+      # the shipped root composer.json, whose require block is deliberately empty:
+      # the committed root composer.lock has a stale content-hash, so adding
+      # require-dev there makes composer install refuse, and the regenerated lock
+      # would ship in the Marketplace zip.
+      #
+      # --no-plugins/--no-scripts: nothing about mocking classes needs install-time
+      # code execution, and the tree would otherwise run a Composer plugin fetched
+      # from a third-party mirror. Verified: the suite passes without them.
+      - name: Install test dependencies
+        working-directory: Test/Unit
+        run: composer install --no-interaction --no-progress --no-plugins --no-scripts --prefer-dist
+
+      # Config lives in the root phpunit.xml so CI and a local run share one
+      # definition; it excludes Test/Unit/vendor from discovery, because
+      # magento/framework ships its own *Test.php files which fatal when loaded.
+      - name: Run PHPUnit
+        run: Test/Unit/vendor/bin/phpunit -c phpunit.xml --no-coverage
