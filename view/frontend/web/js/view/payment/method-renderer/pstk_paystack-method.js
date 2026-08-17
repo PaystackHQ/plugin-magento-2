@@ -112,7 +112,7 @@ define(
                         popup.newTransaction({
                             key: paystackConfiguration.public_key,
                             email: paymentData.email,
-                            amount: Math.ceil(quote.totals().grand_total * 100),
+                            amount: Math.round(quote.totals().grand_total * 100),
                             phone: paymentData.telephone,
                             currency: checkoutConfig.totalsData.quote_currency_code,
                             metadata: {
