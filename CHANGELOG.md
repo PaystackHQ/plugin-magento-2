@@ -7,9 +7,8 @@ The entries below cover every release since the last tag, **v3.0.10**.
 
 ## [3.0.11] - 2026-08-17
 
-Corrects the transaction payload sent to Paystack. All three fixes are in what
-the module *sends*; none changes how a payment is verified or how an order
-advances.
+Corrects the transaction payload sent to Paystack: the amount is now always an
+integer number of currency subunits, and the order's own currency is sent.
 
 ### Fixed
 - **Redirect-mode checkout failed outright on many order totals.** The amount

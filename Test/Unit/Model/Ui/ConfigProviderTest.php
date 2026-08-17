@@ -8,7 +8,7 @@ use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Magento\Payment\Model\MethodInterface;
-use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
 
@@ -40,7 +40,7 @@ class ConfigProviderTest extends TestCase
 
     private function setupStore(string $baseUrl = 'https://shop.example.com/'): void
     {
-        $store = $this->createMock(StoreInterface::class);
+        $store = $this->createMock(Store::class);
         $store->method('getBaseUrl')->willReturn($baseUrl);
         $this->storeManager->method('getStore')->willReturn($store);
     }

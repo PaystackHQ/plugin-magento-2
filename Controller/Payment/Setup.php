@@ -48,13 +48,25 @@ class Setup extends AbstractPaystackStandard {
     }
 
     protected function processAuthorization(\Magento\Sales\Model\Order $order) {
+
+        // Fail closed on a missing order currency. Paystack accepts a null currency
+        // silently and substitutes the integration's own default, so an empty value
+        // here would charge in the wrong currency with a success response and no
+        // trace. The caller turns this into order history plus the failure page.
+        $currency = $order->getOrderCurrencyCode();
+        if (!$currency) {
+            throw new \Pstk\Paystack\Gateway\Exception\ApiException(
+                'Cannot start a Paystack transaction: the order has no currency code.'
+            );
+        }
+
         $tranx = $this->paystackClient->initializeTransaction([
             'first_name' => $order->getCustomerFirstname(),
             'last_name' => $order->getCustomerLastname(),
             'amount' => (int) round($order->getGrandTotal() * 100), // in kobo (integer, subunit)
             'email' => $order->getCustomerEmail(), // unique to customers
             'reference' => $order->getIncrementId(), // unique to transactions
-            'currency' => $order->getOrderCurrencyCode(),
+            'currency' => $currency,
             'callback_url' => $this->storeManager->getStore()->getBaseUrl() . "paystack/payment/callback",
             'metadata' => array('custom_fields' => array(
                 array(
