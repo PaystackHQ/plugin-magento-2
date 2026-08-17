@@ -3,7 +3,43 @@
 All notable changes to the Paystack Magento 2 module are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-The entries below cover every release since the last tag, **v3.0.4**.
+The entries below cover every release since the last tag, **v3.0.10**.
+
+## [3.0.11] - 2026-08-17
+
+Corrects the transaction payload sent to Paystack: the amount is now always an
+integer number of currency subunits, and the order's own currency is sent.
+
+### Fixed
+- **Redirect-mode checkout failed outright on many order totals.** The amount
+  was sent as `grandTotal * 100`, a floating-point product — so a 19.99 order
+  became `1998.9999999999998`. Paystack rejects a non-integer amount
+  (`"amount" must be an integer`, `invalid_amount`), which surfaced to the
+  customer as a failed checkout they could not complete. Totals such as 19.99,
+  1.10, 0.29 and 8.21 were affected; totals whose product is exactly
+  representable, such as 5000.00, were not — which is why this was
+  intermittent. The amount is now an integer number of subunits.
+  Thanks to @iammcoding (#70).
+- **Inline (popup) mode overcharged by one subunit on some totals.** The amount
+  used `Math.ceil`, so `Math.ceil(8.21 * 100)` produced 822 instead of 821
+  whenever the float product landed just above the integer. Now uses
+  `Math.round`.
+- **Redirect mode sent no currency at all.** The code called
+  `$order->getCurrency()`, which is not a method on `Magento\Sales\Model\Order`
+  — it resolved through Magento's magic getter to a non-existent `currency`
+  column and returned `null`. Paystack silently substitutes the integration's
+  default currency for a null value, so orders were charged the correct number
+  in the merchant's default currency rather than the order's. On a store whose
+  display currency differs from the Paystack default this mischarged
+  significantly: a 12.50 USD order was charged as 12.50 in the default
+  currency. Now sends `getOrderCurrencyCode()`.
+
+### Upgrade note
+If your Paystack integration does not have your store's currency enabled, the
+redirect flow will now fail with `unsupported_currency` where it previously
+completed (in the wrong currency). Enable your store's currency on your Paystack
+integration. This is a deliberate change: a visible failure is better than a
+silent mischarge.
 
 ## [3.0.10] - 2026-07-17
 
@@ -79,5 +115,7 @@ Superseded by 3.0.10 (its fixes are included there).
 
 ---
 
-_Note: 3.0.5–3.0.10 were not individually tagged; see the commit history since
+_Note: 3.0.5–3.0.9 were not individually tagged — they were released together as
+[`v3.0.10`](https://github.com/PaystackHQ/plugin-magento-2/releases/tag/v3.0.10).
+See the commit history since
 [`v3.0.4`](https://github.com/PaystackHQ/plugin-magento-2/releases/tag/v3.0.4) for details._

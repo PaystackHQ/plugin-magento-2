@@ -10,8 +10,10 @@ VERSION=$(grep -E '"version"' composer.json | sed 's/.*: *"\(.*\)".*/\1/')
 ZIP="${NAME}-${VERSION}.zip"
 
 # Always build fresh — `zip -r` updates in place and would keep stale entries
-# (e.g. files that are now excluded) from a previous build.
-rm -f "$ZIP"
+# (e.g. files that are now excluded) from a previous build. Prior-version zips go
+# too, so the only artifact at the repo root is the one just built and there is
+# nothing stale to upload to Adobe by mistake.
+rm -f "${NAME}"-*.zip
 
 # Exclude dev assets, internal docs, archives, and any built zips.
 # docs/ holds internal QA artifacts (review logs, recordings) and must never ship.
