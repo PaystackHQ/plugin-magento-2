@@ -54,7 +54,7 @@ class Setup extends AbstractPaystackStandard {
             'amount' => (int) round($order->getGrandTotal() * 100), // in kobo (integer, subunit)
             'email' => $order->getCustomerEmail(), // unique to customers
             'reference' => $order->getIncrementId(), // unique to transactions
-            'currency' => $order->getCurrency(),
+            'currency' => $order->getOrderCurrencyCode(),
             'callback_url' => $this->storeManager->getStore()->getBaseUrl() . "paystack/payment/callback",
             'metadata' => array('custom_fields' => array(
                 array(

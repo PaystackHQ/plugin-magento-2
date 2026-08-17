@@ -24,7 +24,7 @@ use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Payment;
 use Magento\Checkout\Model\Session as CheckoutSession;
-use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
 
@@ -121,7 +121,7 @@ class SetupTest extends TestCase
         $order->method('getGrandTotal')->willReturn(5000.00);
         $order->method('getCustomerEmail')->willReturn('john@example.com');
         $order->method('getIncrementId')->willReturn('000000001');
-        $order->method('getCurrency')->willReturn('NGN');
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
 
         $this->orderInterface->method('loadByIncrementId')
             ->with('000000001')
@@ -133,7 +133,7 @@ class SetupTest extends TestCase
             ->with(Paystack::CODE)
             ->willReturn($methodInstance);
 
-        $store = $this->createMock(StoreInterface::class);
+        $store = $this->createMock(Store::class);
         $store->method('getBaseUrl')->willReturn('https://example.com/');
         $this->storeManager->method('getStore')->willReturn($store);
 
@@ -145,7 +145,8 @@ class SetupTest extends TestCase
         $this->paystackClient->expects($this->once())
             ->method('initializeTransaction')
             ->with($this->callback(function ($params) {
-                return $params['amount'] === 500000 // kobo
+                return $params['amount'] === 500000 // kobo, integer subunit
+                    && $params['currency'] === 'NGN'
                     && $params['email'] === 'john@example.com'
                     && $params['reference'] === '000000001'
                     && $params['callback_url'] === 'https://example.com/paystack/payment/callback';
@@ -178,7 +179,7 @@ class SetupTest extends TestCase
         $order->method('getGrandTotal')->willReturn(100.00);
         $order->method('getCustomerEmail')->willReturn('john@test.com');
         $order->method('getIncrementId')->willReturn('000000001');
-        $order->method('getCurrency')->willReturn('NGN');
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
 
         $this->orderInterface->method('loadByIncrementId')->willReturn($order);
 
@@ -186,7 +187,7 @@ class SetupTest extends TestCase
         $methodInstance->method('getCode')->willReturn(Paystack::CODE);
         $this->paymentHelper->method('getMethodInstance')->willReturn($methodInstance);
 
-        $store = $this->createMock(StoreInterface::class);
+        $store = $this->createMock(Store::class);
         $store->method('getBaseUrl')->willReturn('https://example.com/');
         $this->storeManager->method('getStore')->willReturn($store);
 
