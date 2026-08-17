@@ -1,12 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Single source of truth for the unit suite, used by both CI and a local run.
+
+  The bootstrap points at Test/Unit/vendor/ because the test dependencies live in
+  the CI-only manifest Test/Unit/composer.json, NOT in the shipped root
+  composer.json (which must keep an empty require block — see
+  docs/plans/2026-08-17-money-path-verification.md, item R2.0). Install them with:
+
+      cd Test/Unit && composer install
+
+  Test/Unit/vendor is excluded from discovery because magento/framework ships its
+  own *Test.php files, and picking those up fatals on an undefined constant.
+-->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.net/10.5/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="Test/Unit/vendor/autoload.php"
          colors="true"
          cacheDirectory=".phpunit.cache">
     <testsuites>
         <testsuite name="Paystack Unit Tests">
             <directory>Test/Unit</directory>
+            <exclude>Test/Unit/vendor</exclude>
         </testsuite>
     </testsuites>
     <source>
@@ -16,7 +30,10 @@
         <exclude>
             <directory>Test</directory>
             <directory>dev</directory>
+            <directory>dev-ee</directory>
+            <directory>dev-repro</directory>
             <directory>docs</directory>
+            <directory>marketplace</directory>
             <directory>vendor</directory>
         </exclude>
     </source>

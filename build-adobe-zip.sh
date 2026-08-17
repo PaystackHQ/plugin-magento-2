@@ -20,6 +20,9 @@ rm -f "${NAME}"-*.zip
 # graphify-out/ is gitignored internal knowledge-graph tooling cache — must never ship.
 # marketplace/ is Adobe listing collateral (user guide source + PDF, listing copy);
 # it is uploaded to the submission separately and is not package content.
+# phpunit.xml, composer.lock, and Test/Unit/* (including its CI-only
+# composer.json) are unit-test infrastructure added for R2.0 — Test/Mftf/
+# must still ship, this only excludes Test/Unit/.
 zip -r "$ZIP" . \
   -x "*.git*" \
   -x "*.DS_Store" \
@@ -36,6 +39,10 @@ zip -r "$ZIP" . \
   -x "graphify-out/*" \
   -x "node_modules/*" \
   -x "build-adobe-zip.sh" \
+  -x "phpunit.xml" \
+  -x "composer.lock" \
+  -x "Test/Unit/*" \
+  -x "Test/Unit/composer.json" \
   -x "${NAME}-*.zip"
 
 echo "Created: $ZIP"

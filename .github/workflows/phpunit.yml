@@ -1,0 +1,67 @@
+name: PHPUnit
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+# Least privilege: this job only needs to read the checkout. Without an explicit
+# block the job inherits the repository default GITHUB_TOKEN scope, which on many
+# repos is read/write. Deliberately `pull_request`, not `pull_request_target`, so
+# a fork's code never runs with a writable token or access to secrets.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Single version on purpose. 8.5 is what Adobe QA and dev-repro/ run, and
+        # it is the only version this suite has actually been verified on
+        # (98 tests / 137 assertions / 0 errors).
+        #
+        # Why not a wider matrix yet: 8.2 is impossible — magento/framework
+        # 103.0.9 requires ~8.3.0||~8.4.0||~8.5.0, so an 8.2 leg cannot even
+        # `composer install`. (That also contradicts the "PHP 8.2+" claim in
+        # README/CLAUDE.md for the 2.4.9 line — flagged, not changed here.) And
+        # 8.3/8.4 are untested: because Test/Unit/composer.lock is not committed,
+        # each runner resolves its own dependency set, so an 8.3 leg resolves
+        # transitive packages nobody has ever run. Add them once someone has
+        # watched them go green, not before — an untested leg is a permanently red
+        # required check waiting to happen.
+        php: [ '8.5' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer
+
+      # Test/Unit/composer.json is a CI-only manifest resolving against
+      # mirror.mage-os.org (no Adobe auth needed). It must never be merged into
+      # the shipped root composer.json, whose require block is deliberately empty
+      # — see docs/plans/2026-08-17-money-path-verification.md item R2.0.
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: Test/Unit/vendor
+          key: ${{ runner.os }}-php${{ matrix.php }}-composer-${{ hashFiles('Test/Unit/composer.json') }}
+
+      - name: Install test dependencies
+        working-directory: Test/Unit
+        run: composer install --no-interaction --no-progress
+
+      # Config lives in the root phpunit.xml so CI and a local run share one
+      # definition; it excludes Test/Unit/vendor from discovery, because
+      # magento/framework ships its own *Test.php files which fatal when loaded.
+      - name: Run PHPUnit
+        run: Test/Unit/vendor/bin/phpunit -c phpunit.xml --no-coverage

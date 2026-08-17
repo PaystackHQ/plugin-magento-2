@@ -36,8 +36,7 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
             ->method('setCustomerNoteNotify')
             ->with(false);
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
         $eventObserver = $this->createMock(Observer::class);
         $eventObserver->method('getEvent')->willReturn($event);
@@ -54,8 +53,7 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
         $order->method('getPayment')->willReturn($payment);
         $order->expects($this->never())->method('setCanSendNewEmailFlag');
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
         $eventObserver = $this->createMock(Observer::class);
         $eventObserver->method('getEvent')->willReturn($event);
@@ -67,9 +65,12 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
     {
         $order = $this->createMock(Order::class);
         $order->method('getPayment')->willReturn(null);
+        // Assert the observable consequence rather than merely "no exception":
+        // with no payment the method cannot be identified, so email suppression
+        // must not be applied.
+        $order->expects($this->never())->method('setCanSendNewEmailFlag');
 
-        $event = $this->createMock(Event::class);
-        $event->method('getOrder')->willReturn($order);
+        $event = new Event(['order' => $order]);
 
         $eventObserver = $this->createMock(Observer::class);
         $eventObserver->method('getEvent')->willReturn($event);

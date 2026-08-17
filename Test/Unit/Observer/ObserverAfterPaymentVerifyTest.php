@@ -54,8 +54,7 @@ class ObserverAfterPaymentVerifyTest extends TestCase
             ->method('send')
             ->with($order, true);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getPaystackOrder')->willReturn($order);
+        $eventObserver = new Observer(['paystack_order' => $order]);
 
         $this->observer->execute($eventObserver);
     }
@@ -68,8 +67,7 @@ class ObserverAfterPaymentVerifyTest extends TestCase
         $order->expects($this->never())->method('setState');
         $order->expects($this->never())->method('save');
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getPaystackOrder')->willReturn($order);
+        $eventObserver = new Observer(['paystack_order' => $order]);
 
         $this->observer->execute($eventObserver);
     }
@@ -88,8 +86,7 @@ class ObserverAfterPaymentVerifyTest extends TestCase
         $this->orderSender->method('send')
             ->willThrowException(new \Exception('SMTP failure'));
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getPaystackOrder')->willReturn($order);
+        $eventObserver = new Observer(['paystack_order' => $order]);
 
         // Should not throw
         $this->observer->execute($eventObserver);
@@ -97,10 +94,12 @@ class ObserverAfterPaymentVerifyTest extends TestCase
 
     public function testNullOrderDoesNotCrash(): void
     {
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getPaystackOrder')->willReturn(null);
+        // Assert the observable consequence rather than merely "no exception":
+        // with no order there is nothing to advance, so no email may be sent.
+        $this->orderSender->expects($this->never())->method('send');
 
-        // Should not throw
+        $eventObserver = new Observer(['paystack_order' => null]);
+
         $this->observer->execute($eventObserver);
     }
 }
