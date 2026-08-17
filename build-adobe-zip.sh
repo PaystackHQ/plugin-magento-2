@@ -20,9 +20,13 @@ rm -f "${NAME}"-*.zip
 # graphify-out/ is gitignored internal knowledge-graph tooling cache — must never ship.
 # marketplace/ is Adobe listing collateral (user guide source + PDF, listing copy);
 # it is uploaded to the submission separately and is not package content.
-# phpunit.xml, composer.lock, and Test/Unit/* (including its CI-only
-# composer.json) are unit-test infrastructure added for R2.0 — Test/Mftf/
-# must still ship, this only excludes Test/Unit/.
+# phpunit.xml and Test/Unit/* are unit-test infrastructure (the CI-only manifest,
+# its lock, its vendor tree and its phpunit cache all live under Test/Unit/).
+# Test/Mftf/ MUST still ship — this excludes Test/Unit/ only.
+# composer.lock is deliberately NOT excluded: it shipped in 3.0.10, which passed
+# Adobe review, and dropping it would change the released artifact's composition
+# without anyone having validated that against Adobe's package checks. Removing
+# the stale root lock outright is filed as its own change.
 zip -r "$ZIP" . \
   -x "*.git*" \
   -x "*.DS_Store" \
@@ -40,9 +44,7 @@ zip -r "$ZIP" . \
   -x "node_modules/*" \
   -x "build-adobe-zip.sh" \
   -x "phpunit.xml" \
-  -x "composer.lock" \
   -x "Test/Unit/*" \
-  -x "Test/Unit/composer.json" \
   -x "${NAME}-*.zip"
 
 echo "Created: $ZIP"

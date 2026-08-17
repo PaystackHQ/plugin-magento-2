@@ -1,6 +1,6 @@
 {
     "name": "pstk/paystack-magento2-module-tests",
-    "description": "CI-only manifest for running Test/Unit. Not shipped — do not add deps here to the root composer.json.",
+    "description": "CI-only manifest for running Test/Unit. Never shipped (build-adobe-zip.sh excludes Test/Unit/*). Do NOT move these deps into the root composer.json: its require block must stay empty, and the committed root composer.lock has a stale content-hash that would make composer install refuse.",
     "version": "1.0.0",
     "repositories": [
         {
@@ -8,26 +8,20 @@
             "url": "https://mirror.mage-os.org/"
         }
     ],
-    "require-dev": {
-        "phpunit/phpunit": "^10.5",
-        "magento/framework": "^103.0",
-        "magento/module-sales": "*",
-        "magento/module-payment": "*",
-        "magento/module-quote": "*",
-        "magento/module-store": "*",
-        "magento/module-checkout": "*",
-        "magento/module-customer": "*"
+    "require": {
+        "phpunit/phpunit": "10.5.64",
+        "magento/framework": "103.0.9",
+        "magento/module-sales": "103.0.9",
+        "magento/module-payment": "100.4.9",
+        "magento/module-quote": "101.2.9",
+        "magento/module-store": "101.1.9",
+        "magento/module-checkout": "100.4.9",
+        "magento/module-customer": "103.0.9"
     },
     "prefer-stable": true,
     "autoload": {
         "psr-4": {
             "Pstk\\Paystack\\": "../../"
-        }
-    },
-    "config": {
-        "allow-plugins": {
-            "magento/*": true,
-            "laminas/laminas-dependency-plugin": true
         }
     }
 }

@@ -4,19 +4,25 @@
 
   The bootstrap points at Test/Unit/vendor/ because the test dependencies live in
   the CI-only manifest Test/Unit/composer.json, NOT in the shipped root
-  composer.json (which must keep an empty require block — see
-  docs/plans/2026-08-17-money-path-verification.md, item R2.0). Install them with:
+  composer.json, whose require block must stay empty: the committed root
+  composer.lock has a stale content-hash (it locks a package absent from require),
+  so adding require-dev there makes composer install refuse, and the regenerated
+  lock would ship in the Marketplace zip. Install the test deps with:
 
       cd Test/Unit && composer install
 
   Test/Unit/vendor is excluded from discovery because magento/framework ships its
   own *Test.php files, and picking those up fatals on an undefined constant.
+
+  cacheDirectory lives under Test/Unit/ on purpose: build-adobe-zip.sh already
+  excludes Test/Unit/*, so the cache cannot leak into the Marketplace package.
+  At the repo root it did leak — verified.
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.net/10.5/phpunit.xsd"
          bootstrap="Test/Unit/vendor/autoload.php"
          colors="true"
-         cacheDirectory=".phpunit.cache">
+         cacheDirectory="Test/Unit/.phpunit.cache">
     <testsuites>
         <testsuite name="Paystack Unit Tests">
             <directory>Test/Unit</directory>

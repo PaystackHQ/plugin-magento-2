@@ -38,8 +38,7 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
 
         $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }
@@ -55,8 +54,7 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
 
         $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }
@@ -65,15 +63,16 @@ class ObserverBeforeSalesOrderPlaceTest extends TestCase
     {
         $order = $this->createMock(Order::class);
         $order->method('getPayment')->willReturn(null);
-        // Assert the observable consequence rather than merely "no exception":
-        // with no payment the method cannot be identified, so email suppression
-        // must not be applied.
+        // This case genuinely only guarantees "does not throw": remove the
+        // `$order->getPayment() &&` guard from the production code and null->getMethod()
+        // throws before setCanSendNewEmailFlag is reachable, so the test fails on that
+        // Error rather than on the never(). The distinguishing negative case — a real
+        // payment for a different method — is testNonPaystackOrderDoesNotSuppressEmail.
         $order->expects($this->never())->method('setCanSendNewEmailFlag');
 
         $event = new Event(['order' => $order]);
 
-        $eventObserver = $this->createMock(Observer::class);
-        $eventObserver->method('getEvent')->willReturn($event);
+        $eventObserver = new Observer(['event' => $event]);
 
         $this->observer->execute($eventObserver);
     }
