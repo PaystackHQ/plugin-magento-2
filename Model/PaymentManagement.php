@@ -23,6 +23,7 @@ namespace Pstk\Paystack\Model;
 
 use Exception;
 use Pstk\Paystack\Gateway\PaystackApiClient;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Psr\Log\LoggerInterface;
 
 class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
@@ -43,18 +44,25 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
      */
     private $logger;
 
+    /**
+     * @var TransactionValidator
+     */
+    private $transactionValidator;
+
     public function __construct(
         PaystackApiClient $paystackClient,
         \Magento\Framework\Event\Manager $eventManager,
         \Magento\Sales\Api\Data\OrderInterface $orderInterface,
         \Magento\Checkout\Model\Session $checkoutSession,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        TransactionValidator $transactionValidator
     ) {
         $this->paystackClient = $paystackClient;
         $this->eventManager = $eventManager;
         $this->orderInterface = $orderInterface;
         $this->checkoutSession = $checkoutSession;
         $this->logger = $logger;
+        $this->transactionValidator = $transactionValidator;
     }
 
     /**

@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Controller\Payment\Recreate;
 use Pstk\Paystack\Gateway\PaystackApiClient;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Request\Http as HttpRequest;
@@ -66,7 +67,8 @@ class RecreateTest extends TestCase
             $this->createMock(EventManager::class),
             $request,
             $this->createMock(LoggerInterface::class),
-            $this->createMock(PaystackApiClient::class)
+            $this->createMock(PaystackApiClient::class),
+            new TransactionValidator($this->createMock(LoggerInterface::class))
         );
     }
 

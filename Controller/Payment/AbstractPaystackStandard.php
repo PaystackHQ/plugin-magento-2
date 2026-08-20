@@ -83,6 +83,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
     protected $request;
 
     /**
+     *
+     * @var \Pstk\Paystack\Gateway\Validator\TransactionValidator
+     */
+    protected $transactionValidator;
+
+    /**
      * Constructor
      *
      * @param \Magento\Framework\App\Action\Context  $context
@@ -101,7 +107,8 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             \Magento\Framework\Event\Manager $eventManager,
             \Magento\Framework\App\Request\Http $request,
             \Psr\Log\LoggerInterface $logger,
-            PaystackApiClient $paystackClient
+            PaystackApiClient $paystackClient,
+            \Pstk\Paystack\Gateway\Validator\TransactionValidator $transactionValidator
     ) {
         $this->resultPageFactory = $resultPageFactory;
         $this->orderRepository = $orderRepository;
@@ -115,6 +122,7 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->request = $request;
         $this->logger = $logger;
         $this->paystackClient = $paystackClient;
+        $this->transactionValidator = $transactionValidator;
 
         parent::__construct($context);
     }

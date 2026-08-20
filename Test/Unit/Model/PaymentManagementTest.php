@@ -7,6 +7,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Model\PaymentManagement;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Magento\Framework\Event\Manager as EventManager;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Checkout\Model\Session as CheckoutSession;
@@ -45,7 +46,8 @@ class PaymentManagementTest extends TestCase
             $this->eventManager,
             $this->orderInterface,
             $this->checkoutSession,
-            $this->logger
+            $this->logger,
+            new TransactionValidator($this->createMock(LoggerInterface::class))
         );
     }
 

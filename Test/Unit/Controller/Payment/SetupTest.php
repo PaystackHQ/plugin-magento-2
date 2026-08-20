@@ -7,6 +7,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Controller\Payment\Setup;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Magento\Framework\App\Action\Context;
@@ -99,7 +100,8 @@ class SetupTest extends TestCase
             $this->createMock(EventManager::class),
             $request,
             $this->createMock(LoggerInterface::class),
-            $this->paystackClient
+            $this->paystackClient,
+            new TransactionValidator($this->createMock(LoggerInterface::class))
         );
     }
 
