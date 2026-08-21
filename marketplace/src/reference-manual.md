@@ -55,7 +55,7 @@ The module registers the front name `paystack` (route id `pstk_paystack`).
 |---|---|---|
 | `/paystack/payment/setup` | `Controller\Payment\Setup` | Initialises a transaction and redirects to Paystack (Redirect flow) |
 | `/paystack/payment/callback` | `Controller\Payment\Callback` | Return URL from Paystack; verifies the transaction |
-| `/paystack/payment/recreate` | `Controller\Payment\Recreate` | Cancels a failed order, restores the quote, returns to the payment step |
+| `/paystack/payment/recreate` | `Controller\Payment\Recreate` | Cancels an unpaid order, restores the quote, returns to the payment step. Acts only on an order still in the `new` or `pending_payment` state that was placed with this payment method; anything else is refused, so a settled order cannot be cancelled by this route |
 | `/paystack/payment/webhook` | `Controller\Payment\Webhook` | Receives server-to-server events from Paystack |
 
 `Controller\Payment\AbstractPaystackStandard` provides shared quote-loading and messaging used by the Redirect-flow controllers.
@@ -66,9 +66,26 @@ The module registers the front name `paystack` (route id `pstk_paystack`).
 |---|---|---|
 | GET | `/V1/paystack/verify/:reference` | anonymous |
 
-Serviced by `Pstk\Paystack\Api\PaymentManagementInterface::verifyPayment`. The `reference` segment carries both the Paystack transaction reference and the Magento quote id, joined by an underscore: `{paystackReference}_{quoteId}`.
+Serviced by `Pstk\Paystack\Api\PaymentManagementInterface::verifyPayment`. The `reference` segment carries both the Paystack transaction reference and the Magento quote id, joined by the literal separator `_-~-_`: `{paystackReference}_-~-_{quoteId}`. A reference that does not split into exactly two non-empty parts is rejected outright.
 
 The endpoint is anonymous because it is called by the checkout JavaScript immediately after the customer completes an inline payment, before any session guarantee exists. Verification is performed server-side against the Paystack API — the client's claim that payment succeeded is never trusted.
+
+On success the response is `{"status": true, "message": ..., "data": {"status": ..., "reference": ...}}`. The `data` node deliberately carries only those two fields; the full Paystack transaction object is never returned to the browser.
+
+A refusal is `{"status": false, "reason": ..., "final": ..., "message": ...}`, where `reason` is a stable machine-readable code and `final` states whether the customer may be invited to pay again. `final` is `true` whenever money has moved or its fate is unknown — the checkout JavaScript must leave the Place Order button disabled in that case, and treats a missing or unrecognised `final` as `true` so that a new `reason` can never silently re-enable payment.
+
+| `reason` | Meaning | `final` |
+|---|---|---|
+| `not_successful` | Paystack's record shows the transaction did not succeed | `false` |
+| `bad_reference` | The reference in the URL was unusable; no verification was attempted | `false` |
+| `in_flight` | Still settling (bank transfer, USSD) — the webhook will confirm it | `true` |
+| `amount_mismatch` | Paid less than the order total | `true` |
+| `currency_mismatch` | Paid in a different currency than the order | `true` |
+| `zero_total` | The order total or the paid amount was not a positive figure | `true` |
+| `wrong_method` | The order was not placed with this payment method | `true` |
+| `malformed` | Paystack's verify response could not be read | `true` |
+| `quote_mismatch` | The transaction does not belong to this order's quote | `true` |
+| `error` | Verification could not be completed | `true` |
 
 ## Events
 
@@ -86,6 +103,17 @@ Paystack sends `charge.success` events to `/paystack/payment/webhook` as an HTTP
 Each request carries an `X-Paystack-Signature` header containing an HMAC-SHA512 digest of the raw request body, computed with your Paystack secret key. The module validates this signature with a timing-safe comparison before processing, and rejects requests that fail. The transaction is then independently verified against the Paystack API.
 
 Magento's form-key CSRF validation is skipped for this route via `Plugin\CsrfValidatorSkip`, because the request originates from Paystack rather than from a browser session. Signature validation is what authenticates the request.
+
+### Retry semantics
+
+The HTTP status the endpoint returns tells Paystack whether redelivering the event could produce a different outcome, so the two classes must not be confused:
+
+- **`200`** — decided; do not retry. Returned when the transaction genuinely did not settle the order (not successful, amount or currency mismatch, non-positive total), when the payload cannot be parsed or carries no usable reference, when the event type is not one this module handles, and when an order cannot be found for a transaction old enough that no order is ever going to appear for it.
+- **`503`** — undecided; please retry. Returned while a transaction is still settling, when Paystack's verify response could not be read, when the Paystack API call itself failed, and when the order has not been found yet but the transaction is recent enough that an in-flight order save could still be the cause.
+
+Any condition the module does not specifically recognise is treated as undecided and retried, because wrongly reporting a decision consumes Paystack's retry window and can leave a real payment permanently unconfirmed.
+
+When a settlement is refused, or accepted with an overpayment, the module records a comment on the order's status history giving the reason, the amount paid, the amount expected, and the transaction reference. The comment is written once per transaction and reason, so a retried event does not repeat it.
 
 ## Content Security Policy
 

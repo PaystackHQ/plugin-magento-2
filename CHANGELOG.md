@@ -5,6 +5,56 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 The entries below cover every release since the last tag, **v3.0.10**.
 
+## [Unreleased]
+
+Every payment-verification path now confirms, from Paystack's verify response,
+that the transaction actually settles the order before the order is advanced
+to Processing: transaction status must be `success`, the paid amount must cover
+the order total (in subunits), the currency must match the order's currency,
+and the order must have been placed with the Paystack payment method. Overpaying
+is accepted (normal when the customer bears the transaction fee) and recorded.
+
+### Security
+- **A transaction that did not pay for an order can no longer advance it.**
+  Previously, the inline (popup) REST verification endpoint never checked the
+  verify response's status, and no path compared the paid amount or currency to
+  the order — a smaller or differently-denominated payment could mark an order
+  as Processing. All three paths (redirect callback, inline REST endpoint,
+  webhook) now share one settlement check (`Gateway/Validator/TransactionValidator`).
+- **`/paystack/payment/recreate` no longer cancels a paid order.** The route
+  only acts on orders still in the `new` or `pending_payment` state; a
+  processing/complete order can no longer have its quote restored by an
+  anonymous GET. (Side effect: an already-cancelled order no longer re-triggers
+  a quote restore — the first call has already restored the quote.)
+- **The inline verification endpoint no longer leaks internal detail.** The
+  success response now returns only the transaction status and reference
+  (previously the full transaction object, including card BIN/last4, customer
+  email/phone, and IP, went to the browser), and error responses return a fixed
+  message instead of raw gateway/cURL text.
+
+### Fixed
+- **Webhook responses now distinguish transient from permanent failures.**
+  Transient conditions (transaction still settling via bank transfer/USSD,
+  Paystack API errors, order not yet found) return HTTP 503 so Paystack retries
+  within its ~72h window — previously every outcome returned HTTP 200, which
+  silently cancelled retries and could permanently strand a legitimate payment's
+  confirmation. Genuine rejections (failed status, amount/currency mismatch)
+  return HTTP 200 so Paystack does not pointlessly retry.
+- **Rejected and surplus payments are now visible to the merchant.** When the
+  (signature-verified) webhook rejects a settlement mismatch, or accepts an
+  overpayment, it writes an order status-history comment with the paid vs
+  expected amount and reference.
+- **A malformed inline verification reference no longer causes a 500** on the
+  anonymous REST route.
+- **After a payment fails post-charge on the inline flow, the Place Order
+  button is no longer re-enabled** — re-enabling it invited a double charge
+  while money was already moving.
+
+### Upgrade note
+If a store's checkout was relying (unknowingly) on under- or mis-paid
+transactions being accepted, those orders now stay pending and the webhook
+records the mismatch in the order history. No configuration change is needed.
+
 ## [3.0.11] - 2026-08-17
 
 Corrects the transaction payload sent to Paystack: the amount is now always an
