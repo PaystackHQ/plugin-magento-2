@@ -1238,6 +1238,76 @@ class WebhookTest extends TestCase
      * a second delivery it has already recorded a comment for — this is the
      * regression test for that amplification.
      */
+    /**
+     * WRONG_METHOD and MALFORMED are transient so a not-yet-hydrated payment
+     * relation or a momentarily unreadable response still gets retried — but
+     * only while that is still a plausible explanation. Past the window the
+     * answer is not going to change, and 72h of retries each re-running an
+     * outbound verify call buys nothing. Data provider covers both reasons on
+     * both sides of the bound.
+     *
+     * @dataProvider staleReasonProvider
+     */
+    public function testTransientReasonBecomesPermanentOnceTheTransactionIsStale(
+        array $verifyOverrides,
+        string $paymentMethod,
+        int $expectedCode
+    ): void {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'ORDER_046'],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_046', $verifyOverrides),
+        ];
+        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test');
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getId')->willReturn(1);
+        $order->method('getIncrementId')->willReturn('ORDER_046');
+        $order->method('getStatus')->willReturn('pending');
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn($paymentMethod);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getStatusHistories')->willReturn([]);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setHttpResponseCode')
+            ->with($expectedCode);
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('unverified');
+
+        $this->controller->execute();
+    }
+
+    public static function staleReasonProvider(): array
+    {
+        $recent = date('c', time() - 60);
+        $stale = date('c', time() - 7200);
+
+        return [
+            // Wrong payment method: the order really was placed with something
+            // else, so past the window this can never resolve.
+            'wrong_method, recent' => [['paid_at' => $recent], 'checkmo', 503],
+            'wrong_method, stale' => [['paid_at' => $stale], 'checkmo', 200],
+            // Unreadable verify response: amount absent entirely.
+            'malformed, recent' => [['paid_at' => $recent, 'amount' => null], Paystack::CODE, 503],
+            'malformed, stale' => [['paid_at' => $stale, 'amount' => null], Paystack::CODE, 200],
+        ];
+    }
+
     public function testDuplicateWebhookDeliveryWritesHistoryCommentOnlyOnce(): void
     {
         $rawBody = json_encode([
@@ -1260,11 +1330,15 @@ class WebhookTest extends TestCase
 
         $order = $this->createSettledOrder('ORDER_045');
 
-        // Simulate a prior delivery of this exact event having already written
-        // the rejection comment for this (reference, reason) pair.
+        // A prior delivery of this exact event already wrote the rejection comment
+        // for this (reference, reason) pair. The prose here is deliberately NOT the
+        // wording the controller produces today: deduplication must key off the
+        // machine-readable marker, so that rewording the human-readable half — or
+        // humanising `amount_mismatch` — cannot silently start appending a fresh
+        // comment on every one of Paystack's retries.
         $existingHistory = $this->createMock(\Magento\Sales\Api\Data\OrderStatusHistoryInterface::class);
         $existingHistory->method('getComment')->willReturn(
-            'Paystack: payment rejected — amount_mismatch: paid 499999 NGN, expected 500000 NGN, reference ORDER_045'
+            'Totally different prose about an amount mismatch. [paystack:ORDER_045:amount_mismatch]'
         );
         $order->method('getStatusHistories')->willReturn([$existingHistory]);
 

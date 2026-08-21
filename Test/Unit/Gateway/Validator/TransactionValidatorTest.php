@@ -593,4 +593,138 @@ class TransactionValidatorTest extends TestCase
 
         $this->assertFalse($this->validator->isOverpayment($response, $order));
     }
+
+    public function testPaidSubunitsReturnsIntOnValidResponse(): void
+    {
+        $response = $this->verifyResponse(['amount' => 500000]);
+
+        $this->assertSame(500000, $this->validator->paidSubunits($response));
+    }
+
+    public function testPaidSubunitsNullOnMissingData(): void
+    {
+        $response = (object) [];
+
+        $this->assertNull($this->validator->paidSubunits($response));
+    }
+
+    public function testPaidSubunitsNullOnFractionalAmount(): void
+    {
+        $response = $this->verifyResponse(['amount' => 500000.5]);
+
+        $this->assertNull($this->validator->paidSubunits($response));
+    }
+
+    /**
+     * Pins the contract that 0 is a valid, readable amount, distinct from
+     * "unreadable" (null) — a caller checking falsiness instead of `=== null`
+     * would conflate the two.
+     */
+    public function testPaidSubunitsReturnsZeroForZeroAmount(): void
+    {
+        $response = $this->verifyResponse(['amount' => 0]);
+
+        $this->assertSame(0, $this->validator->paidSubunits($response));
+    }
+
+    public function testIsPaystackOrderTrueForPaystackMethod(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN', Paystack::CODE);
+
+        $this->assertTrue($this->validator->isPaystackOrder($order));
+    }
+
+    public function testIsPaystackOrderFalseForOtherMethod(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN', 'checkmo');
+
+        $this->assertFalse($this->validator->isPaystackOrder($order));
+    }
+
+    public function testIsPaystackOrderFalseForNullPayment(): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getPayment')->willReturn(null);
+
+        $this->assertFalse($this->validator->isPaystackOrder($order));
+    }
+
+    /**
+     * Drift-catcher: every REASON_* constant on this class must be named in
+     * one of the explicit/defaulted allow-lists below for each classification
+     * map. A new REASON_* nobody wires up here would otherwise silently
+     * inherit isTerminalForCustomer()'s and isPermanentForWebhook()'s
+     * fail-closed defaults and customerMessage()'s default copy without
+     * anyone deciding that was the intended classification — this test forces
+     * that decision to be explicit and named.
+     */
+    public function testEveryReasonConstantIsAccountedForInClassificationMaps(): void
+    {
+        $reflection = new \ReflectionClass(TransactionValidator::class);
+        $reasonConstants = array_filter(
+            $reflection->getConstants(),
+            static fn (string $name): bool => strpos($name, 'REASON_') === 0,
+            ARRAY_FILTER_USE_KEY
+        );
+
+        // isTerminalForCustomer(): explicit -> RETRYABLE_FOR_CUSTOMER (false);
+        // defaulted -> everything else, fails closed to true.
+        $terminalAccountedFor = [
+            TransactionValidator::REASON_NOT_SUCCESSFUL,
+            TransactionValidator::REASON_BAD_REFERENCE,
+            TransactionValidator::REASON_MALFORMED,
+            TransactionValidator::REASON_IN_FLIGHT,
+            TransactionValidator::REASON_WRONG_METHOD,
+            TransactionValidator::REASON_ZERO_TOTAL,
+            TransactionValidator::REASON_CURRENCY_MISMATCH,
+            TransactionValidator::REASON_AMOUNT_MISMATCH,
+        ];
+
+        // isPermanentForWebhook(): explicit -> PERMANENT_FOR_WEBHOOK (true);
+        // defaulted -> everything else, fails closed to false (transient/retry).
+        $permanentAccountedFor = [
+            TransactionValidator::REASON_NOT_SUCCESSFUL,
+            TransactionValidator::REASON_AMOUNT_MISMATCH,
+            TransactionValidator::REASON_CURRENCY_MISMATCH,
+            TransactionValidator::REASON_ZERO_TOTAL,
+            TransactionValidator::REASON_MALFORMED,
+            TransactionValidator::REASON_IN_FLIGHT,
+            TransactionValidator::REASON_WRONG_METHOD,
+            TransactionValidator::REASON_BAD_REFERENCE,
+        ];
+
+        // customerMessage(): explicit -> its own switch case; defaulted -> the
+        // "do not pay again, contact support" fallback branch.
+        $messageAccountedFor = [
+            TransactionValidator::REASON_NOT_SUCCESSFUL,
+            TransactionValidator::REASON_BAD_REFERENCE,
+            TransactionValidator::REASON_IN_FLIGHT,
+            TransactionValidator::REASON_AMOUNT_MISMATCH,
+            TransactionValidator::REASON_CURRENCY_MISMATCH,
+            TransactionValidator::REASON_ZERO_TOTAL,
+            TransactionValidator::REASON_WRONG_METHOD,
+            TransactionValidator::REASON_MALFORMED,
+        ];
+
+        foreach ($reasonConstants as $name => $value) {
+            $this->assertContains(
+                $value,
+                $terminalAccountedFor,
+                "$name ('$value') is not accounted for in isTerminalForCustomer()'s "
+                    . "explicit-or-defaulted allow-list — decide and register it."
+            );
+            $this->assertContains(
+                $value,
+                $permanentAccountedFor,
+                "$name ('$value') is not accounted for in isPermanentForWebhook()'s "
+                    . "explicit-or-defaulted allow-list — decide and register it."
+            );
+            $this->assertContains(
+                $value,
+                $messageAccountedFor,
+                "$name ('$value') is not accounted for in customerMessage()'s "
+                    . "explicit-or-defaulted allow-list — decide and register it."
+            );
+        }
+    }
 }

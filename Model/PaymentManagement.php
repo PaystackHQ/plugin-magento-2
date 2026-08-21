@@ -148,12 +148,6 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
      * Callback's single source for the same classification — this is not a
      * fourth, independently maintained policy map.
      *
-     * `final` answers the only question the browser needs: may this customer be
-     * invited to pay again? The server decides it, because the checkout JS has
-     * no way to know about a reason added to the validator later — it compares
-     * against false, so a missing or mangled field leaves the place-order button
-     * disabled.
-     *
      * @param string $reason
      * @return string
      */
@@ -162,9 +156,7 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
         return json_encode([
             'status' => false,
             'reason' => $reason,
-            // The server classifies; the browser obeys. Keeping this decision here
-            // means a reason added to the validator later cannot quietly re-enable
-            // payment in the checkout JS, which has no way to know about it.
+            // See TransactionValidator::isTerminalForCustomer() for the fail-closed rationale.
             'final' => $this->transactionValidator->isTerminalForCustomer($reason),
             'message' => $this->transactionValidator->customerMessage($reason),
         ]);

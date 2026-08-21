@@ -21,6 +21,12 @@ define(
                 ) {
             'use strict';
 
+            // Client-side fallback only: shown when the server's own tailored
+            // `message` is unavailable (parse failure, network failure, or a
+            // response that omits it). One copy, referenced everywhere it's needed.
+            var PAYMENT_UNCONFIRMED_MESSAGE =
+                "We could not confirm your payment. Please do not pay again — contact support with your order number.";
+
             return Component.extend({
                 defaults: {
                     template: 'Pstk_Paystack/payment/pstk_paystack'
@@ -147,11 +153,10 @@ define(
                             },
                             onSuccess: function (response) {
                                 // Invariant: everything below this point runs AFTER Paystack has
-                                // taken the customer's money. A verify outcome that does not prove
-                                // the charge failed must leave the button disabled — failing open
-                                // here (re-enabling the button) is a double-charge bug, not a
-                                // convenience. The one exception is `reason === 'not_successful'`,
-                                // where Paystack's own record says nothing was charged.
+                                // taken the customer's money, so this handler fails closed — only
+                                // an explicit `data.final === false` from the verify response
+                                // re-enables the pay button; re-enabling on anything else invites
+                                // a double charge.
                                 fullScreenLoader.startLoader();
                                 $.ajax({
                                     method: "GET",
@@ -168,7 +173,7 @@ define(
                                         fullScreenLoader.stopLoader();
                                         // Can't prove the charge failed — terminal by default.
                                         _this.messageContainer.addErrorMessage({
-                                            message: "We could not confirm your payment. Please do not pay again — contact support with your order number."
+                                            message: PAYMENT_UNCONFIRMED_MESSAGE
                                         });
                                         return;
                                     }
@@ -216,14 +221,14 @@ define(
                                     // it classified, so show that, falling back to a generic
                                     // literal only if the server ever omits it.
                                     _this.messageContainer.addErrorMessage({
-                                        message: data.message || "We could not confirm your payment. Please do not pay again — contact support with your order number."
+                                        message: data.message || PAYMENT_UNCONFIRMED_MESSAGE
                                     });
                                 }).fail(function () {
                                     fullScreenLoader.stopLoader();
                                     // A 5xx/timeout on verify proves nothing about the charge —
                                     // terminal by default.
                                     _this.messageContainer.addErrorMessage({
-                                        message: "We could not confirm your payment. Please do not pay again — contact support with your order number."
+                                        message: PAYMENT_UNCONFIRMED_MESSAGE
                                     });
                                 });
                             },

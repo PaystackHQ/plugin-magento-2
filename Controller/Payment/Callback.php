@@ -22,6 +22,8 @@
 
 namespace Pstk\Paystack\Controller\Payment;
 
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
+
 class Callback extends AbstractPaystackStandard {
 
     /**
@@ -41,12 +43,9 @@ class Callback extends AbstractPaystackStandard {
         // A rejection must not tell the customer to try again once money may have
         // moved. This is the one generic surface used by every failure branch.
         //
-        // Not sourced from TransactionValidator::customerMessage(): this copy is
-        // pinned by D5's regression tests and its wording differs slightly from
-        // customerMessage()'s NOT_SUCCESSFUL/default copy (e.g. "before trying
-        // again" vs "Please try again."/"do not pay again"). Switching this
-        // branch over would change tested D5 wording for no behavior gain, so it
-        // stays a local literal — see the class-level note in the plan report.
+        // Deliberately not TransactionValidator::customerMessage(): the wording
+        // here (e.g. "before trying again" vs "Please try again."/"do not pay
+        // again") is a separate copy pinned by CallbackTest.
         $unconfirmed = "We could not confirm your payment. If you believe you were "
             . "charged, please contact support before trying again.";
 
@@ -76,14 +75,12 @@ class Callback extends AbstractPaystackStandard {
                 // later via the webhook. Telling that customer to try again invites a
                 // second payment for a charge already on its way.
                 //
-                // Not sourced from TransactionValidator::customerMessage(): this is
-                // D5's original in-flight/not-completed copy, pinned by CallbackTest,
-                // and its wording ("once it completes" / "before trying again")
-                // differs from customerMessage()'s IN_FLIGHT/NOT_SUCCESSFUL copy
-                // ("once it is confirmed" / "Please try again."). Kept as local
-                // literals rather than changing tested D5 wording — see the plan
-                // report for the divergence.
-                $inFlight = in_array($status, ["pending", "ongoing", "queued"], true);
+                // Deliberately not TransactionValidator::customerMessage(): the
+                // wording below ("once it completes" / "before trying again") is a
+                // separate copy from customerMessage()'s IN_FLIGHT/NOT_SUCCESSFUL
+                // text ("once it is confirmed" / "Please try again."), pinned by
+                // CallbackTest.
+                $inFlight = in_array($status, TransactionValidator::STATUSES_IN_FLIGHT, true);
 
                 return $this->redirectToFinal(
                     false,

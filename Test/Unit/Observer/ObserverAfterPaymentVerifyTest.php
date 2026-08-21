@@ -8,6 +8,7 @@ use Pstk\Paystack\Observer\ObserverAfterPaymentVerify;
 use Magento\Framework\Event\Observer;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Email\Sender\OrderSender;
+use Psr\Log\LoggerInterface;
 
 class ObserverAfterPaymentVerifyTest extends TestCase
 {
@@ -17,10 +18,14 @@ class ObserverAfterPaymentVerifyTest extends TestCase
     /** @var MockObject|OrderSender */
     private $orderSender;
 
+    /** @var MockObject|LoggerInterface */
+    private $logger;
+
     protected function setUp(): void
     {
         $this->orderSender = $this->createMock(OrderSender::class);
-        $this->observer = new ObserverAfterPaymentVerify($this->orderSender);
+        $this->logger = $this->createMock(LoggerInterface::class);
+        $this->observer = new ObserverAfterPaymentVerify($this->orderSender, $this->logger);
     }
 
     public function testPendingOrderTransitionsToProcessing(): void
@@ -74,6 +79,32 @@ class ObserverAfterPaymentVerifyTest extends TestCase
 
         $order->expects($this->never())->method('setState');
         $order->expects($this->never())->method('save');
+
+        $eventObserver = new Observer(['paystack_order' => $order]);
+
+        $this->observer->execute($eventObserver);
+    }
+
+    /**
+     * The caller has already told the customer/Paystack the payment settled by the
+     * time this observer runs — if the status gate doesn't match, the order must
+     * not advance, but that should leave a trace instead of silently doing nothing.
+     */
+    public function testNonPendingOrderLogsWarningAndIsNotModified(): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getStatus')->willReturn('processing');
+        $order->method('getIncrementId')->willReturn('100000123');
+
+        $order->expects($this->never())->method('setState');
+        $order->expects($this->never())->method('save');
+
+        $this->logger->expects($this->once())
+            ->method('warning')
+            ->with($this->callback(function ($message) {
+                return str_contains((string)$message, '100000123')
+                    && str_contains((string)$message, 'processing');
+            }));
 
         $eventObserver = new Observer(['paystack_order' => $order]);
 

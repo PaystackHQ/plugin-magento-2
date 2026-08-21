@@ -23,7 +23,6 @@
 namespace Pstk\Paystack\Controller\Payment;
 
 use Magento\Sales\Model\Order;
-use Pstk\Paystack\Model\Payment\Paystack;
 
 class Recreate extends AbstractPaystackStandard {
 
@@ -38,19 +37,23 @@ class Recreate extends AbstractPaystackStandard {
             return $this->_redirect('checkout', ['_fragment' => 'payment']);
         }
 
-        // A GET to this route is anonymous and unauthenticated. This guard stops
-        // an anonymous GET from cancelling a settled/advanced order (or one paid
-        // via a non-Paystack method) and restoring its quote. It does not make a
+        // A GET to this route is anonymous and unauthenticated. These two guards
+        // stop an anonymous GET from cancelling a settled/advanced order (or one
+        // paid via a non-Paystack method) and restoring its quote. Neither makes a
         // Paystack reference single-use: a customer can pay, close the tab before
         // verify runs, and the order stays "new" with the paid reference still
         // replayable — closing that gap is the deferred R2.3 reference-consumption
-        // work. Allow-list, not deny-list: only the two pre-payment states are
+        // work.
+
+        // Allow-list, not deny-list: only the two pre-payment states are
         // restorable, so a future state this list doesn't know about fails closed.
-        if (!in_array(
+        $isPrePaymentState = in_array(
             $order->getState(),
             [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT],
             true
-        ) || !$order->getPayment() || $order->getPayment()->getMethod() !== Paystack::CODE) {
+        );
+
+        if (!$isPrePaymentState || !$this->transactionValidator->isPaystackOrder($order)) {
             return $this->redirectToFinal(
                 false,
                 "We could not restart this payment. Please contact support if you "

@@ -11,12 +11,17 @@ use Psr\Log\LoggerInterface;
  * caller advances it: same currency, `paid >= expected` subunits, `success` status,
  * placed with the Paystack payment method.
  *
- * expectedSubunits() must always mirror the amount formula transaction
- * initialization sends (Controller/Payment/Setup.php and the inline checkout JS) —
- * it is the single owner of that formula. Zero-decimal currencies (e.g. XOF, RWF)
- * inherit the pre-existing `x100` convention from initialization as-is, so the
- * comparison here stays consistent with init by construction even though Paystack's
- * own subunit convention for those currencies is not separately modeled.
+ * expectedSubunits() is the server-side owner of the amount formula
+ * Controller/Payment/Setup.php uses to initialize a transaction. The inline
+ * checkout path does not call this method: it computes the same ×100 rounding
+ * client-side from `quote.totals().grand_total`, so the two formulas must be
+ * kept in step by hand. This class does not prevent that divergence — the
+ * settlement gate below is what catches it, by rejecting a paid amount that
+ * doesn't match what this method says was expected. Zero-decimal currencies
+ * (e.g. XOF, RWF) inherit the pre-existing `x100` convention from
+ * initialization as-is, so the comparison here stays consistent with init by
+ * construction even though Paystack's own subunit convention for those
+ * currencies is not separately modeled.
  */
 class TransactionValidator
 {
@@ -38,7 +43,11 @@ class TransactionValidator
     public const REASON_CURRENCY_MISMATCH = 'currency_mismatch';
     public const REASON_AMOUNT_MISMATCH = 'amount_mismatch';
 
-    private const STATUSES_IN_FLIGHT = ['pending', 'ongoing', 'queued'];
+    /**
+     * The single list of "not yet settled" Paystack statuses — callers must
+     * read this rather than keep their own copy of the literal.
+     */
+    public const STATUSES_IN_FLIGHT = ['pending', 'ongoing', 'queued'];
 
     /**
      * Reasons safe to invite a retry for: nothing was charged through us, or
@@ -87,6 +96,46 @@ class TransactionValidator
     }
 
     /**
+     * True when the order's payment method is Paystack — the single
+     * definition of "wrong method" used by settlementFailureReason()'s
+     * WRONG_METHOD guard.
+     *
+     * @param OrderInterface $order
+     * @return bool
+     */
+    public function isPaystackOrder(OrderInterface $order): bool
+    {
+        $payment = $order->getPayment();
+        return $payment !== null && $payment->getMethod() === Paystack::CODE;
+    }
+
+    /**
+     * The integral subunit amount a verify response reports as paid, or null
+     * when the envelope is unreadable or the amount is not a whole number —
+     * the single parse settlementFailureReason() and isOverpayment() both
+     * build on. Note: 0 is a valid, readable amount and is returned as such;
+     * callers distinguishing "unreadable" from "zero paid" must check for
+     * `=== null`, not falsiness.
+     *
+     * @param object $verifyResponse Full envelope PaystackApiClient::verifyTransaction() returns
+     * @return int|null
+     */
+    public function paidSubunits(object $verifyResponse): ?int
+    {
+        $data = $verifyResponse->data ?? null;
+        if (!is_object($data)) {
+            return null;
+        }
+
+        $rawAmount = $data->amount ?? null;
+        if ($rawAmount === null || !$this->isIntegral($rawAmount)) {
+            return null;
+        }
+
+        return (int) $rawAmount;
+    }
+
+    /**
      * @param object         $verifyResponse Full envelope PaystackApiClient::verifyTransaction() returns
      * @param OrderInterface $order
      * @return string|null Null when settled for this order; otherwise the first failing REASON_* constant
@@ -103,11 +152,10 @@ class TransactionValidator
             return self::REASON_MALFORMED;
         }
 
-        $rawAmount = $data->amount ?? null;
-        if ($rawAmount === null || !$this->isIntegral($rawAmount)) {
+        $paid = $this->paidSubunits($verifyResponse);
+        if ($paid === null) {
             return self::REASON_MALFORMED;
         }
-        $paid = (int) $rawAmount;
 
         $paidCurrency = $data->currency ?? null;
         if (!is_string($paidCurrency) || $paidCurrency === '') {
@@ -125,82 +173,42 @@ class TransactionValidator
         $expected = $this->expectedSubunits($order);
         $orderCurrency = $order->getOrderCurrencyCode();
 
-        $payment = $order->getPayment();
-        if ($payment === null || $payment->getMethod() !== Paystack::CODE) {
-            $this->logSettlementProblem(
-                self::REASON_WRONG_METHOD,
-                $data,
-                $order,
-                $paid,
-                $expected,
-                $paidCurrency,
-                $orderCurrency
-            );
+        // All six values are settled from here on, so the context for every
+        // guard below (and the overpayment info-log) is built once.
+        $context = $this->allowListedContext($data, $order, $paid, $expected, $paidCurrency, $orderCurrency);
+
+        if (!$this->isPaystackOrder($order)) {
+            $this->logSettlementProblem(self::REASON_WRONG_METHOD, $context);
             return self::REASON_WRONG_METHOD;
         }
 
         if ($expected <= 0 || $paid <= 0) {
-            $this->logSettlementProblem(
-                self::REASON_ZERO_TOTAL,
-                $data,
-                $order,
-                $paid,
-                $expected,
-                $paidCurrency,
-                $orderCurrency
-            );
+            $this->logSettlementProblem(self::REASON_ZERO_TOTAL, $context);
             return self::REASON_ZERO_TOTAL;
         }
 
         if (empty($orderCurrency) || strtoupper($paidCurrency) !== strtoupper($orderCurrency)) {
-            $this->logSettlementProblem(
-                self::REASON_CURRENCY_MISMATCH,
-                $data,
-                $order,
-                $paid,
-                $expected,
-                $paidCurrency,
-                $orderCurrency
-            );
+            $this->logSettlementProblem(self::REASON_CURRENCY_MISMATCH, $context);
             return self::REASON_CURRENCY_MISMATCH;
         }
 
         if ($paid < $expected) {
-            $this->logSettlementProblem(
-                self::REASON_AMOUNT_MISMATCH,
-                $data,
-                $order,
-                $paid,
-                $expected,
-                $paidCurrency,
-                $orderCurrency
-            );
+            $this->logSettlementProblem(self::REASON_AMOUNT_MISMATCH, $context);
             return self::REASON_AMOUNT_MISMATCH;
         }
 
         if ($paid > $expected) {
             // Normal for Paystack's customer-bears-fee configuration, where
             // data.amount = requested + fee. Info level keeps the signal usable.
-            $this->logger->info('Paystack: settlement overpayment', $this->allowListedContext(
-                $data,
-                $order,
-                $paid,
-                $expected,
-                $paidCurrency,
-                $orderCurrency
-            ));
+            $this->logger->info('Paystack: settlement overpayment', $context);
         }
 
         return null;
     }
 
     /**
-     * True when the customer must NOT be invited to pay again: money moved, or
-     * its fate is unknown. Fails closed by design — only the reasons explicitly
-     * known to be safe (nothing was charged through us) return false; any
-     * reason this method does not recognise, including a future REASON_* this
-     * class gains later, defaults to terminal rather than silently re-enabling
-     * payment.
+     * True when the customer must NOT be invited to pay again for this reason.
+     * See RETRYABLE_FOR_CUSTOMER above for which reasons return false and why.
      *
      * @param string $reason
      * @return bool
@@ -211,11 +219,9 @@ class TransactionValidator
     }
 
     /**
-     * True only for the explicit permanent allow-list — reasons describing what
-     * the money actually did, where a retry of the same webhook event cannot
-     * change the answer. Everything else, including an unrecognised reason, is
-     * transient: a permanent 200 on a reason we cannot classify would silently
-     * strand a real payment with no retry and no merchant trace.
+     * True when this reason is safe to report permanent (200, no retry) to
+     * Paystack. See PERMANENT_FOR_WEBHOOK above for which reasons return true
+     * and why.
      *
      * @param string $reason
      * @return bool
@@ -226,13 +232,12 @@ class TransactionValidator
     }
 
     /**
-     * The single owner of customer-facing rejection copy for a REASON_* — or any
-     * caller-defined reason, since PaymentManagement also passes ad hoc strings
-     * ('error', 'quote_mismatch') for outcomes the verify response never even
-     * reached. Anything not explicitly listed here falls into the last, safest
-     * branch — fails closed on wording exactly as isTerminalForCustomer() fails
-     * closed on terminality, so an unrecognised reason never invites a second
-     * payment.
+     * Owns the customer-facing rejection copy for the REASON_* classifications
+     * reached through a verify response — or any caller-defined reason, since
+     * PaymentManagement also passes ad hoc strings ('error', 'quote_mismatch')
+     * for outcomes the verify response never even reached. Callback.php,
+     * Setup.php and Recreate.php each carry their own copy for non-verify
+     * outcomes that have no REASON_* here.
      *
      * @param string $reason
      * @return string
@@ -248,10 +253,11 @@ class TransactionValidator
                 return "Your payment is still being confirmed. Please do not pay "
                     . "again — we will email you once it is confirmed.";
             default:
-                // AMOUNT_MISMATCH, CURRENCY_MISMATCH, ZERO_TOTAL, WRONG_METHOD,
-                // MALFORMED, and any reason not yet in the vocabulary: money
-                // moved, or its fate is unknown, so the customer must not be
-                // told to just try again.
+                // Any reason not covered above, including one this class does
+                // not yet know about: money moved, or its fate is unknown, so
+                // the customer must not be told to just try again. Fails
+                // closed on wording exactly as isTerminalForCustomer() fails
+                // closed on terminality.
                 return "We could not confirm your payment. Please do not pay "
                     . "again — contact support with your order number.";
         }
@@ -260,10 +266,11 @@ class TransactionValidator
     /**
      * Whether a verify response's paid amount exceeds this order's expected
      * subunits — the single definition callers use to detect the customer-
-     * bears-fee overpayment window, replacing ad hoc is_numeric/(int) casts.
-     * Meaningful once settlementFailureReason() has already returned null for
-     * the same envelope/order pair; called against an unsettled pair it simply
-     * answers "no" rather than throwing, since it is a read, not a gate.
+     * bears-fee overpayment window, built on paidSubunits() rather than ad hoc
+     * is_numeric/(int) casts. Meaningful once settlementFailureReason() has
+     * already returned null for the same envelope/order pair; called against
+     * an unsettled pair it simply answers "no" rather than throwing, since it
+     * is a read, not a gate.
      *
      * @param object $verifyResponse Full envelope PaystackApiClient::verifyTransaction() returns
      * @param OrderInterface $order
@@ -271,17 +278,12 @@ class TransactionValidator
      */
     public function isOverpayment(object $verifyResponse, OrderInterface $order): bool
     {
-        $data = $verifyResponse->data ?? null;
-        if (!is_object($data)) {
+        $paid = $this->paidSubunits($verifyResponse);
+        if ($paid === null) {
             return false;
         }
 
-        $rawAmount = $data->amount ?? null;
-        if ($rawAmount === null || !$this->isIntegral($rawAmount)) {
-            return false;
-        }
-
-        return (int) $rawAmount > $this->expectedSubunits($order);
+        return $paid > $this->expectedSubunits($order);
     }
 
     /**
@@ -303,30 +305,13 @@ class TransactionValidator
     }
 
     /**
-     * @param string          $reason
-     * @param object          $data
-     * @param OrderInterface  $order
-     * @param int             $paid
-     * @param int             $expected
-     * @param string          $paidCurrency
-     * @param string|null     $orderCurrency
+     * @param string $reason
+     * @param array  $context Allow-listed context from allowListedContext()
      * @return void
      */
-    private function logSettlementProblem(
-        string $reason,
-        object $data,
-        OrderInterface $order,
-        int $paid,
-        int $expected,
-        string $paidCurrency,
-        ?string $orderCurrency
-    ): void {
-        $this->logger->warning(
-            'Paystack: settlement check failed',
-            $this->allowListedContext($data, $order, $paid, $expected, $paidCurrency, $orderCurrency) + [
-                'reason' => $reason,
-            ]
-        );
+    private function logSettlementProblem(string $reason, array $context): void
+    {
+        $this->logger->warning('Paystack: settlement check failed', $context + ['reason' => $reason]);
     }
 
     /**
