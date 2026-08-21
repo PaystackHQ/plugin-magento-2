@@ -148,12 +148,11 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
      * Callback's single source for the same classification — this is not a
      * fourth, independently maintained policy map.
      *
-     * No `final`/terminal flag is sent: the JS derives terminality from
-     * `reason` alone (fail closed — anything but the one explicitly retry-safe
-     * reason leaves the place-order button disabled), so a `final` boolean here
-     * would be a value with no reader. isTerminalForCustomer() still exists as
-     * the codified version of that same policy (asserted directly in
-     * TransactionValidatorTest) even though nothing in production calls it.
+     * `final` answers the only question the browser needs: may this customer be
+     * invited to pay again? The server decides it, because the checkout JS has
+     * no way to know about a reason added to the validator later — it compares
+     * against false, so a missing or mangled field leaves the place-order button
+     * disabled.
      *
      * @param string $reason
      * @return string

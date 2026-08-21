@@ -76,12 +76,23 @@ class RecreateTest extends TestCase
         );
     }
 
+    /**
+     * A payment placed with this module's method, so a test can vary the order
+     * state without the payment-method guard rejecting it for its own reasons.
+     */
+    private function paystackPayment()
+    {
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+
+        return $payment;
+    }
+
     public function testCancelsActiveOrderAndRestoresQuote(): void
     {
         $controller = $this->createController();
 
-        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
-        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $payment = $this->paystackPayment();
 
         $order = $this->createMock(Order::class);
         $order->method('getId')->willReturn(1);
@@ -104,8 +115,7 @@ class RecreateTest extends TestCase
     {
         $controller = $this->createController();
 
-        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
-        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $payment = $this->paystackPayment();
 
         $order = $this->createMock(Order::class);
         $order->method('getId')->willReturn(1);
@@ -158,6 +168,10 @@ class RecreateTest extends TestCase
         $order = $this->createMock(Order::class);
         $order->method('getId')->willReturn(1);
         $order->method('getState')->willReturn(Order::STATE_PROCESSING);
+        // Paystack's own method, deliberately: without it the payment-method
+        // guard would reject this order too, and the test would pass whether or
+        // not the state guard exists. The state is the only thing wrong here.
+        $order->method('getPayment')->willReturn($this->paystackPayment());
 
         $order->expects($this->never())->method('registerCancellation');
         $order->expects($this->never())->method('save');

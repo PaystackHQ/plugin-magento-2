@@ -306,6 +306,82 @@ class TransactionValidatorTest extends TestCase
     }
 
     /**
+     * Pins the checked-in-this-order sequence from the class docblock: when more
+     * than one thing is wrong with a response/order pair, the FIRST failing check
+     * in the documented order must win, not whichever the implementation happens
+     * to reach last. A refactor that reorders the checks would silently change
+     * which REASON_* callers see (and, via isPermanentForWebhook()/
+     * isTerminalForCustomer(), whether Paystack gets a retry and whether the
+     * customer is invited to pay again) without any single-condition test here
+     * catching it.
+     *
+     * @dataProvider orderingPrecedenceProvider
+     */
+    public function testSettlementFailureReasonPrecedenceOrder(
+        float $grandTotal,
+        ?string $currencyCode,
+        string $method,
+        array $responseOverrides,
+        string $expectedReason
+    ): void {
+        $order = $this->makeOrder($grandTotal, $currencyCode, $method);
+        $response = $this->verifyResponse($responseOverrides);
+
+        $this->assertSame(
+            $expectedReason,
+            $this->validator->settlementFailureReason($response, $order)
+        );
+    }
+
+    public static function orderingPrecedenceProvider(): array
+    {
+        return [
+            // Unreadable amount (MALFORMED) must win over a bad status (NOT_SUCCESSFUL)
+            // — MALFORMED is checked before the status branch is even reached.
+            'malformed amount beats not-successful status' => [
+                5000.00,
+                'NGN',
+                Paystack::CODE,
+                ['status' => 'failed', 'amount' => null],
+                TransactionValidator::REASON_MALFORMED,
+            ],
+            // An in-flight status is checked before the amount is compared, so a
+            // short amount on an in-flight transaction still reports IN_FLIGHT.
+            'in-flight status beats amount mismatch' => [
+                5000.00,
+                'NGN',
+                Paystack::CODE,
+                ['status' => 'pending', 'amount' => 499999],
+                TransactionValidator::REASON_IN_FLIGHT,
+            ],
+            // Wrong payment method is checked before the zero-total guard.
+            'wrong method beats zero total' => [
+                0.00,
+                'NGN',
+                'checkmo',
+                [],
+                TransactionValidator::REASON_WRONG_METHOD,
+            ],
+            // Zero/negative expected total is checked before currency is compared.
+            'zero total beats currency mismatch' => [
+                0.00,
+                'NGN',
+                Paystack::CODE,
+                ['currency' => 'USD'],
+                TransactionValidator::REASON_ZERO_TOTAL,
+            ],
+            // Currency mismatch is checked before the amount comparison.
+            'currency mismatch beats amount mismatch' => [
+                5000.00,
+                'NGN',
+                Paystack::CODE,
+                ['currency' => 'USD', 'amount' => 499999],
+                TransactionValidator::REASON_CURRENCY_MISMATCH,
+            ],
+        ];
+    }
+
+    /**
      * Pins the getGrandTotal() + getOrderCurrencyCode() pairing both init paths
      * (Setup.php, the inline JS) use for the expected-amount comparison. A future
      * swap to getBaseGrandTotal() (the base-currency total) must fail this test:

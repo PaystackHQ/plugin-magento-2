@@ -754,6 +754,134 @@ class WebhookTest extends TestCase
         $this->controller->execute();
     }
 
+    /**
+     * isRecentTransaction() reads `data.paid_at`, falling back to `data.created_at`
+     * when `paid_at` is absent — this pins that fallback specifically, not just the
+     * `paid_at`-present cases above.
+     */
+    public function testOrderNotFoundFallsBackToCreatedAtWhenPaidAtMissing(): void
+    {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'ORDER_091',
+            ],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        // No paid_at at all; created_at is recent, so the fallback must still
+        // yield a transient (503), not a permanent (200), classification.
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_091', ['created_at' => date('c')]),
+        ];
+        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test');
+
+        $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $emptyOrder->method('getId')->willReturn(null);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setHttpResponseCode')
+            ->with(503);
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('order not found');
+
+        $this->controller->execute();
+    }
+
+    /**
+     * A stale `created_at` (no `paid_at` at all) must be treated as permanent
+     * (200), exactly like a stale `paid_at` — the fallback is not just read, its
+     * value is actually compared against the retry window.
+     */
+    public function testOrderNotFoundWithStaleCreatedAtAndNoPaidAtReturns200(): void
+    {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'ORDER_092',
+            ],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_092', ['created_at' => date('c', time() - 7200)]),
+        ];
+        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test');
+
+        $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $emptyOrder->method('getId')->willReturn(null);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setHttpResponseCode')
+            ->with(200);
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('order not found');
+
+        $this->controller->execute();
+    }
+
+    /**
+     * A `paid_at` value strtotime() cannot parse must not permanently strand a
+     * genuine payment — isRecentTransaction() treats an unparseable timestamp as
+     * recent (503, retry), the same fail-open behavior as a missing timestamp.
+     */
+    public function testOrderNotFoundWithUnparseablePaidAtReturns503(): void
+    {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'ORDER_093',
+            ],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_093', ['paid_at' => 'not-a-real-timestamp']),
+        ];
+        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test');
+
+        $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $emptyOrder->method('getId')->willReturn(null);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setHttpResponseCode')
+            ->with(503);
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('order not found');
+
+        $this->controller->execute();
+    }
+
     public function testApiExceptionDuringVerifyReturns503WithoutLeakingMessage(): void
     {
         $rawBody = json_encode([
@@ -951,6 +1079,14 @@ class WebhookTest extends TestCase
         $this->rawResult->expects($this->atLeastOnce())
             ->method('setHttpResponseCode')
             ->with(503);
+        // Without this, a code path that throws (and is swallowed by the outer
+        // \Throwable catch, which also sets 503) would satisfy the response-code
+        // assertion above for the wrong reason — this is the only thing that
+        // actually discriminates "order not found, recent" from "an exception
+        // occurred and got caught".
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('order not found');
 
         $this->controller->execute();
     }
