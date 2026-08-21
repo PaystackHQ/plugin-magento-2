@@ -317,6 +317,13 @@ class TransactionValidatorTest extends TestCase
         // Order-currency total: 25000.00 NGN -> 2,500,000 kobo, matches what
         // Paystack (an NGN-denominated charge) reports as paid.
         $order = $this->makeOrder(25000.00, 'NGN');
+        // Stubbed so a future swap to getBaseGrandTotal() fails via the real
+        // amount-mismatch mechanism below, not via ZERO_TOTAL (an unstubbed
+        // mock method returns null, and a null base total would hit the
+        // zero-total guard first — passing this test for the wrong reason).
+        // 15000.00 mirrors the base-USD-derived figure the assertion below
+        // exercises (15000.00 * 100 = 1,500,000 subunits).
+        $order->method('getBaseGrandTotal')->willReturn(15000.00);
         $response = $this->verifyResponse(['amount' => 2500000, 'currency' => 'NGN']);
 
         $this->assertNull($this->validator->settlementFailureReason($response, $order));
@@ -353,5 +360,161 @@ class TransactionValidatorTest extends TestCase
             '5000.00 -> 500000' => [5000.00, 500000],
             'decimal string 20.1500 -> 2015' => ['20.1500', 2015],
         ];
+    }
+
+    /**
+     * @dataProvider retryableReasonProvider
+     */
+    public function testIsTerminalForCustomerFalseForRetryableReasons(string $reason): void
+    {
+        $this->assertFalse($this->validator->isTerminalForCustomer($reason));
+    }
+
+    public static function retryableReasonProvider(): array
+    {
+        return [
+            'not_successful' => [TransactionValidator::REASON_NOT_SUCCESSFUL],
+            'bad_reference' => [TransactionValidator::REASON_BAD_REFERENCE],
+        ];
+    }
+
+    /**
+     * @dataProvider terminalReasonProvider
+     */
+    public function testIsTerminalForCustomerTrueForEverythingElse(string $reason): void
+    {
+        $this->assertTrue($this->validator->isTerminalForCustomer($reason));
+    }
+
+    public static function terminalReasonProvider(): array
+    {
+        return [
+            'in_flight' => [TransactionValidator::REASON_IN_FLIGHT],
+            'amount_mismatch' => [TransactionValidator::REASON_AMOUNT_MISMATCH],
+            'currency_mismatch' => [TransactionValidator::REASON_CURRENCY_MISMATCH],
+            'zero_total' => [TransactionValidator::REASON_ZERO_TOTAL],
+            'wrong_method' => [TransactionValidator::REASON_WRONG_METHOD],
+            'malformed' => [TransactionValidator::REASON_MALFORMED],
+            // Regression test for the whole finding: a reason this class does
+            // not (yet) know about must fail closed, not silently invite a
+            // second payment the way the three old, independent policy maps did.
+            'unknown reason fails closed' => ['some_future_reason'],
+        ];
+    }
+
+    /**
+     * @dataProvider permanentWebhookReasonProvider
+     */
+    public function testIsPermanentForWebhookTrueForAllowListedReasons(string $reason): void
+    {
+        $this->assertTrue($this->validator->isPermanentForWebhook($reason));
+    }
+
+    public static function permanentWebhookReasonProvider(): array
+    {
+        return [
+            'not_successful' => [TransactionValidator::REASON_NOT_SUCCESSFUL],
+            'amount_mismatch' => [TransactionValidator::REASON_AMOUNT_MISMATCH],
+            'currency_mismatch' => [TransactionValidator::REASON_CURRENCY_MISMATCH],
+            'zero_total' => [TransactionValidator::REASON_ZERO_TOTAL],
+        ];
+    }
+
+    /**
+     * @dataProvider transientWebhookReasonProvider
+     */
+    public function testIsPermanentForWebhookFalseForEverythingElse(string $reason): void
+    {
+        $this->assertFalse($this->validator->isPermanentForWebhook($reason));
+    }
+
+    public static function transientWebhookReasonProvider(): array
+    {
+        return [
+            'in_flight' => [TransactionValidator::REASON_IN_FLIGHT],
+            'malformed' => [TransactionValidator::REASON_MALFORMED],
+            'wrong_method' => [TransactionValidator::REASON_WRONG_METHOD],
+            'bad_reference' => [TransactionValidator::REASON_BAD_REFERENCE],
+            // Regression test for the whole finding: an unrecognised reason must
+            // default to transient (retry), not permanent — a permanent 200 on a
+            // reason we cannot classify would silently strand a real payment
+            // with no retry and no merchant trace.
+            'unknown reason fails closed (transient)' => ['some_future_reason'],
+        ];
+    }
+
+    /**
+     * @dataProvider customerMessageProvider
+     */
+    public function testCustomerMessage(string $reason, string $expectedMessage): void
+    {
+        $this->assertSame($expectedMessage, $this->validator->customerMessage($reason));
+    }
+
+    public static function customerMessageProvider(): array
+    {
+        $doNotPayAgain = "We could not confirm your payment. Please do not pay "
+            . "again — contact support with your order number.";
+
+        return [
+            'not_successful' => [
+                TransactionValidator::REASON_NOT_SUCCESSFUL,
+                "Your payment was not completed. Please try again.",
+            ],
+            'bad_reference' => [
+                TransactionValidator::REASON_BAD_REFERENCE,
+                "Payment could not be verified. Please try again.",
+            ],
+            'in_flight' => [
+                TransactionValidator::REASON_IN_FLIGHT,
+                "Your payment is still being confirmed. Please do not pay "
+                    . "again — we will email you once it is confirmed.",
+            ],
+            'amount_mismatch' => [TransactionValidator::REASON_AMOUNT_MISMATCH, $doNotPayAgain],
+            'currency_mismatch' => [TransactionValidator::REASON_CURRENCY_MISMATCH, $doNotPayAgain],
+            'zero_total' => [TransactionValidator::REASON_ZERO_TOTAL, $doNotPayAgain],
+            'wrong_method' => [TransactionValidator::REASON_WRONG_METHOD, $doNotPayAgain],
+            'malformed' => [TransactionValidator::REASON_MALFORMED, $doNotPayAgain],
+            // Regression test for the whole finding: an unrecognised reason must
+            // fall into the safest copy, exactly like isTerminalForCustomer()
+            // fails closed on terminality for the same input.
+            'unknown reason fails closed' => ['some_future_reason', $doNotPayAgain],
+        ];
+    }
+
+    public function testIsOverpaymentTrueWhenPaidExceedsExpected(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN');
+        $response = $this->verifyResponse(['amount' => 500001]);
+
+        $this->assertTrue($this->validator->isOverpayment($response, $order));
+    }
+
+    public function testIsOverpaymentFalseOnExactMatch(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN');
+        $response = $this->verifyResponse(['amount' => 500000]);
+
+        $this->assertFalse($this->validator->isOverpayment($response, $order));
+    }
+
+    public function testIsOverpaymentFalseWhenShort(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN');
+        $response = $this->verifyResponse(['amount' => 499999]);
+
+        $this->assertFalse($this->validator->isOverpayment($response, $order));
+    }
+
+    /**
+     * A read, not a gate: an unreadable envelope must not throw, it must just
+     * answer "no".
+     */
+    public function testIsOverpaymentFalseOnUnreadableResponse(): void
+    {
+        $order = $this->makeOrder(5000.00, 'NGN');
+        $response = (object) [];
+
+        $this->assertFalse($this->validator->isOverpayment($response, $order));
     }
 }
