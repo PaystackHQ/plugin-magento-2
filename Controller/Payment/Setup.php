@@ -38,9 +38,19 @@ class Setup extends AbstractPaystackStandard {
             try {
                 return $this->processAuthorization($order);
             } catch (\Pstk\Paystack\Gateway\Exception\ApiException $e) {
-                $message = $e->getMessage();
-                $order->addStatusToHistory($order->getStatus(), $message);
+                // The exception message is built from curl_error() and Paystack's raw
+                // response body (see Gateway/PaystackApiClient::request()), so it can
+                // carry internal hostnames, TLS/proxy detail, or gateway-side state —
+                // the same leak D5 closed on Callback.php. Detail stays in the
+                // (admin-only) order history; the customer gets a fixed, safe string.
+                $this->logger->error(
+                    'Paystack setup API error: ' . $e->getMessage(),
+                    ['exception' => $e]
+                );
+                $order->addStatusToHistory($order->getStatus(), $e->getMessage());
                 $this->orderRepository->save($order);
+                $message = "We could not start your Paystack payment. Please try again "
+                    . "or contact support if the problem continues.";
             }
         }
 

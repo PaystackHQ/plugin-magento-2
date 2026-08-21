@@ -23,17 +23,43 @@
 namespace Pstk\Paystack\Controller\Payment;
 
 use Magento\Sales\Model\Order;
+use Pstk\Paystack\Model\Payment\Paystack;
 
 class Recreate extends AbstractPaystackStandard {
 
     public function execute() {
-        
+
         $order = $this->checkoutSession->getLastRealOrder();
-        if ($order->getId() && $order->getState() != Order::STATE_CANCELED) {
-            $order->registerCancellation("Payment failed or cancelled")->save();
-            
+
+        // No last real order at all is a benign repeat hit — double-submit, back
+        // button, refresh, or an expired session — not an incident. Just send the
+        // customer back to checkout.
+        if (!$order->getId()) {
+            return $this->_redirect('checkout', ['_fragment' => 'payment']);
         }
-        
+
+        // A GET to this route is anonymous and unauthenticated. This guard stops
+        // an anonymous GET from cancelling a settled/advanced order (or one paid
+        // via a non-Paystack method) and restoring its quote. It does not make a
+        // Paystack reference single-use: a customer can pay, close the tab before
+        // verify runs, and the order stays "new" with the paid reference still
+        // replayable — closing that gap is the deferred R2.3 reference-consumption
+        // work. Allow-list, not deny-list: only the two pre-payment states are
+        // restorable, so a future state this list doesn't know about fails closed.
+        if (!in_array(
+            $order->getState(),
+            [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT],
+            true
+        ) || !$order->getPayment() || $order->getPayment()->getMethod() !== Paystack::CODE) {
+            return $this->redirectToFinal(
+                false,
+                "We could not restart this payment. Please contact support if you "
+                    . "believe this is an error."
+            );
+        }
+
+        $order->registerCancellation("Payment failed or cancelled")->save();
+
         $this->checkoutSession->restoreQuote();
         $this->_redirect('checkout', ['_fragment' => 'payment']);
     }

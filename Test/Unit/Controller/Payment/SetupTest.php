@@ -285,16 +285,29 @@ class SetupTest extends TestCase
         $store->method('getBaseUrl')->willReturn('https://example.com/');
         $this->storeManager->method('getStore')->willReturn($store);
 
+        $exceptionMessage = 'Invalid key: raw gateway body leaked here';
         $this->paystackClient->method('initializeTransaction')
-            ->willThrowException(new ApiException('Invalid key'));
+            ->willThrowException(new ApiException($exceptionMessage));
 
+        // Detail is legitimately useful to an admin, so the order history keeps
+        // the raw exception message.
         $order->expects($this->once())
             ->method('addStatusToHistory')
-            ->with('pending', 'Invalid key');
+            ->with('pending', $exceptionMessage);
 
         $this->orderRepository->expects($this->once())
             ->method('save')
             ->with($order);
+
+        // The same message must not reach the anonymous, customer-facing
+        // response — it is built from curl_error() / Paystack's raw response
+        // body and can carry internal hostnames, TLS/proxy detail, or
+        // gateway-side state (the leak D5 closed on Callback.php).
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($message) use ($exceptionMessage) {
+                return strpos((string) $message, $exceptionMessage) === false;
+            }));
 
         $controller->execute();
     }
