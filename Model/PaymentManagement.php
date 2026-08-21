@@ -71,12 +71,20 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
      */
     public function verifyPayment($reference)
     {
-        
+
         // we are appending quoteid
         $ref = explode('_-~-_', $reference);
+        if (count($ref) !== 2 || $ref[0] === '' || $ref[1] === '') {
+            // Nothing was charged through us yet — the reference the browser sent
+            // is unusable before any verify call is even made. Distinct from
+            // REASON_MALFORMED (an unreadable *gateway* answer): this one is
+            // safe to retry.
+            $this->logger->warning('Paystack: malformed verify reference');
+            return $this->failureResponse(TransactionValidator::REASON_BAD_REFERENCE);
+        }
         $reference = $ref[0];
         $quoteId = $ref[1];
-        
+
         $this->logger->info('Paystack: verifyPayment called', ['reference' => $reference, 'quoteId' => $quoteId]);
 
         try {
@@ -94,33 +102,72 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
                 'tx_meta_quoteId' => $transaction_details->data->metadata->quoteId ?? 'missing',
             ]);
 
-            if ($order && (string)$order->getQuoteId() === (string)$quoteId && (string)$transaction_details->data->metadata->quoteId === (string)$quoteId) {
+            if ($order && (string)$order->getQuoteId() === (string)$quoteId && (string)($transaction_details->data->metadata->quoteId ?? null) === (string)$quoteId) {
 
-                // dispatch the `paystack_payment_verify_after` event to update the order status
-                $this->eventManager->dispatch('paystack_payment_verify_after', [
-                    "paystack_order" => $order,
+                $failureReason = $this->transactionValidator->settlementFailureReason($transaction_details, $order);
+
+                if ($failureReason === null) {
+                    // dispatch the `paystack_payment_verify_after` event to update the order status
+                    $this->eventManager->dispatch('paystack_payment_verify_after', [
+                        "paystack_order" => $order,
+                    ]);
+
+                    $this->logger->info('Paystack: verification successful, event dispatched');
+
+                    // Return consistent response format — trimmed to what the JS reads
+                    return json_encode([
+                        'status' => true,
+                        'message' => 'Verification successful',
+                        'data' => [
+                            'status' => $transaction_details->data->status,
+                            'reference' => $transaction_details->data->reference ?? null,
+                        ],
+                    ]);
+                }
+
+                $this->logger->warning('Paystack: settlement check failed on inline verify', [
+                    'reference' => $reference,
+                    'quoteId' => $quoteId,
+                    'reason' => $failureReason,
                 ]);
-
-                $this->logger->info('Paystack: verification successful, event dispatched');
-
-                // Return consistent response format
-                return json_encode([
-                    'status' => true,
-                    'message' => 'Verification successful',
-                    'data' => $transaction_details->data
-                ]);
+                return $this->failureResponse($failureReason);
             }
             $this->logger->warning('Paystack: quoteId mismatch — order not updated');
         } catch (\Throwable $e) {
             $this->logger->error('Paystack: verifyPayment exception', ['error' => $e->getMessage()]);
-            return json_encode([
-                'status' => false,
-                'message' => $e->getMessage()
-            ]);
+            return $this->failureResponse('error');
         }
+        return $this->failureResponse('quote_mismatch');
+    }
+
+    /**
+     * Builds the anonymous-caller failure JSON: never echoes amounts, gateway
+     * messages, or other internal detail — only a machine-readable `reason` and
+     * a customer-safe `message`. The copy is owned by
+     * TransactionValidator::customerMessage(), which is also Webhook's and
+     * Callback's single source for the same classification — this is not a
+     * fourth, independently maintained policy map.
+     *
+     * No `final`/terminal flag is sent: the JS derives terminality from
+     * `reason` alone (fail closed — anything but the one explicitly retry-safe
+     * reason leaves the place-order button disabled), so a `final` boolean here
+     * would be a value with no reader. isTerminalForCustomer() still exists as
+     * the codified version of that same policy (asserted directly in
+     * TransactionValidatorTest) even though nothing in production calls it.
+     *
+     * @param string $reason
+     * @return string
+     */
+    private function failureResponse(string $reason)
+    {
         return json_encode([
             'status' => false,
-            'message' => "quoteId doesn't match transaction"
+            'reason' => $reason,
+            // The server classifies; the browser obeys. Keeping this decision here
+            // means a reason added to the validator later cannot quietly re-enable
+            // payment in the checkout JS, which has no way to know about it.
+            'final' => $this->transactionValidator->isTerminalForCustomer($reason),
+            'message' => $this->transactionValidator->customerMessage($reason),
         ]);
     }
 

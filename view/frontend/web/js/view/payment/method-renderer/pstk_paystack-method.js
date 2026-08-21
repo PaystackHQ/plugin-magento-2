@@ -146,6 +146,12 @@ define(
                                 ]
                             },
                             onSuccess: function (response) {
+                                // Invariant: everything below this point runs AFTER Paystack has
+                                // taken the customer's money. A verify outcome that does not prove
+                                // the charge failed must leave the button disabled — failing open
+                                // here (re-enabling the button) is a double-charge bug, not a
+                                // convenience. The one exception is `reason === 'not_successful'`,
+                                // where Paystack's own record says nothing was charged.
                                 fullScreenLoader.startLoader();
                                 $.ajax({
                                     method: "GET",
@@ -160,37 +166,64 @@ define(
                                     } catch (e) {
                                         console.error('Payment verification JSON parse error:', e);
                                         fullScreenLoader.stopLoader();
-                                        _this.isPlaceOrderActionAllowed(true);
+                                        // Can't prove the charge failed — terminal by default.
                                         _this.messageContainer.addErrorMessage({
-                                            message: "Payment verification error."
+                                            message: "We could not confirm your payment. Please do not pay again — contact support with your order number."
                                         });
                                         return;
                                     }
 
-                                    $.ajax({
-                                        method: 'POST',
-                                        url: "https://plugin-tracker.paystackintegrations.com/log/charge_success",
-                                        data: {
-                                            plugin_name: 'magento-2',
-                                            transaction_reference: response.reference,
-                                            public_key: paystackConfiguration.public_key
-                                        }
-                                    });
-
                                     if (data.status && data.data && data.data.status === "success") {
+                                        // Only reported to Paystack's plugin tracker once
+                                        // verification actually succeeded — this call used to
+                                        // fire unconditionally, above, before the terminal-
+                                        // failure branch below was even evaluated, so a
+                                        // rejected settlement still reported a successful
+                                        // charge.
+                                        $.ajax({
+                                            method: 'POST',
+                                            url: "https://plugin-tracker.paystackintegrations.com/log/charge_success",
+                                            data: {
+                                                plugin_name: 'magento-2',
+                                                transaction_reference: response.reference,
+                                                public_key: paystackConfiguration.public_key
+                                            }
+                                        });
+
                                         redirectOnSuccessAction.execute();
                                         return;
                                     }
+
                                     fullScreenLoader.stopLoader();
-                                    _this.isPlaceOrderActionAllowed(true);
+
+                                    if (data.final === false) {
+                                        // Only an explicit "not terminal" from the server re-enables
+                                        // payment. The server owns that classification (see
+                                        // TransactionValidator::isTerminalForCustomer) so a reason
+                                        // added there later cannot silently become retryable here.
+                                        // The comparison is against false, not a truthy check on
+                                        // `final`: a missing or mangled field must fail closed.
+                                        _this.isPlaceOrderActionAllowed(true);
+                                        _this.messageContainer.addErrorMessage({
+                                            message: data.message || "Payment verification failed. Please try again."
+                                        });
+                                        return;
+                                    }
+
+                                    // Terminal: money moved, or its fate is unknown. Leave the
+                                    // button disabled — re-enabling it invites a double charge.
+                                    // The server always sends a tailored `message` for the reason
+                                    // it classified, so show that, falling back to a generic
+                                    // literal only if the server ever omits it.
                                     _this.messageContainer.addErrorMessage({
-                                        message: "Payment verification failed. Status: " + (data.data ? data.data.status : 'unknown')
+                                        message: data.message || "We could not confirm your payment. Please do not pay again — contact support with your order number."
                                     });
                                 }).fail(function () {
                                     fullScreenLoader.stopLoader();
-                                    _this.isPlaceOrderActionAllowed(true);
+                                    // A 5xx/timeout on verify proves nothing about the charge —
+                                    // terminal by default.
                                     _this.messageContainer.addErrorMessage({
-                                        message: "Payment verification failed."
+                                        message: "We could not confirm your payment. Please do not pay again — contact support with your order number."
                                     });
                                 });
                             },
