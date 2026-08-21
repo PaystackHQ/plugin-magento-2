@@ -95,6 +95,38 @@ class CallbackTest extends TestCase
         );
     }
 
+    /**
+     * A settled order: same payment method, currency and grand total the
+     * matching-currency `settledVerifyData()` amount pays for in full.
+     */
+    private function createSettledOrder(string $incrementId): MockObject
+    {
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn($incrementId);
+
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+
+        return $order;
+    }
+
+    /**
+     * Verify-response `data` fields for a successful transaction that settles the
+     * order `createSettledOrder()` builds (5000.00 NGN => 500000 subunits).
+     */
+    private function settledVerifyData(string $reference, array $overrides = []): array
+    {
+        return array_merge([
+            'reference' => $reference,
+            'status' => 'success',
+            'amount' => 500000,
+            'currency' => 'NGN',
+        ], $overrides);
+    }
+
     public function testSuccessfulCallbackDispatchesEvent(): void
     {
         $controller = $this->createController();
@@ -104,17 +136,13 @@ class CallbackTest extends TestCase
             ->willReturn('000000001_suffix');
 
         $verifyResponse = (object) [
-            'data' => (object) [
-                'reference' => '000000001_suffix',
-                'status' => 'success',
-            ],
+            'data' => (object) $this->settledVerifyData('000000001_suffix'),
         ];
         $this->paystackClient->method('verifyTransaction')
             ->with('000000001_suffix')
             ->willReturn($verifyResponse);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
         $this->orderInterface->method('loadByIncrementId')
             ->with('000000001')
             ->willReturn($order);
@@ -139,13 +167,9 @@ class CallbackTest extends TestCase
 
         $this->paystackClient->method('verifyTransaction')
             ->with('000000099_attacker')
-            ->willReturn((object) ['data' => (object) [
-                'reference' => '000000001_suffix',
-                'status' => 'success',
-            ]]);
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001_suffix')]);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
 
         $this->orderInterface->expects($this->once())
             ->method('loadByIncrementId')
@@ -360,13 +384,9 @@ class CallbackTest extends TestCase
 
         $this->request->method('get')->willReturn('000000001');
         $this->paystackClient->method('verifyTransaction')
-            ->willReturn((object) ['data' => (object) [
-                'reference' => '000000001',
-                'status' => 'success',
-            ]]);
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
         $this->orderInterface->method('loadByIncrementId')->willReturn($order);
 
         $this->eventManager->method('dispatch')
@@ -401,6 +421,161 @@ class CallbackTest extends TestCase
         $this->orderInterface->method('loadByIncrementId')->willReturn($order);
 
         $this->eventManager->expects($this->never())->method('dispatch');
+
+        $controller->execute();
+    }
+
+    /**
+     * D6: a `success` status alone is not settlement — the amount paid must cover the
+     * order. Short by a single subunit must fail closed exactly like the D5 status gate,
+     * and must never reach the "payment received" warning branch at :127.
+     */
+    public function testAmountShortByOneSubunitDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'amount' => 499999,
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        // AMOUNT_MISMATCH means the payment DID complete, just not for enough —
+        // asserting the copy is the regression test for the bug where this
+        // branch used to say "was not completed", which is false here.
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A `success` status paid in the wrong currency does not settle an order priced in
+     * another currency, however close the numbers look.
+     */
+    public function testCurrencyMismatchDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'currency' => 'USD',
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A charge settled against an order that was not placed with Paystack must not
+     * advance it — narrows the surface a stray/forged reference can act on.
+     */
+    public function testWrongPaymentMethodDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn('000000001');
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn('checkmo');
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A settled-looking `success` status against a zero/negative expected or paid
+     * total must not settle the order — the fourth settlement-gate reason,
+     * completing copy coverage for all of customerMessage()'s default-bucket
+     * reasons through the callback path.
+     */
+    public function testZeroTotalDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn('000000001');
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(0.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * Overpayment by a single subunit still settles the order — required for
+     * Paystack's customer-bears-fee configuration, where `data.amount` includes the
+     * fee on top of the order total. The `paid >= expected` window passes.
+     */
+    public function testOverpayByOneSubunitStillDispatchesEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'amount' => 500001,
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->with('paystack_payment_verify_after', ['paystack_order' => $order]);
 
         $controller->execute();
     }
