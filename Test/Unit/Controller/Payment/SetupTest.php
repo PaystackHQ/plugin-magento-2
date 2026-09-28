@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Controller\Payment\Setup;
 use Pstk\Paystack\Gateway\PaystackApiClient;
+use Pstk\Paystack\Gateway\SubunitConverter;
 use Pstk\Paystack\Gateway\Exception\ApiException;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
@@ -177,9 +178,10 @@ class SetupTest extends TestCase
 
         $this->paystackClient->expects($this->once())
             ->method('initializeTransaction')
-            ->with($this->callback(function ($params) use ($expectedSubunits) {
+            ->with($this->callback(function ($params) use ($expectedSubunits, $grandTotal) {
                 return $params['amount'] === $expectedSubunits
-                    && is_int($params['amount']);
+                    && is_int($params['amount'])
+                    && $params['amount'] === SubunitConverter::toSubunit($grandTotal);
             }))
             ->willReturn((object) ['data' => (object) ['authorization_url' => 'https://checkout.paystack.com/abc123']]);
 
@@ -212,6 +214,98 @@ class SetupTest extends TestCase
         $order->expects($this->once())
             ->method('addStatusToHistory')
             ->with('pending', $this->stringContains('no currency code'));
+
+        $controller->execute();
+    }
+
+    /**
+     * A malformed grand total (missing/zero/non-numeric) must fail closed
+     * rather than silently send amount:0 to Paystack, letting a customer
+     * "pay" nothing with a success response and no trace.
+     */
+    public function testMissingGrandTotalIsRejectedBeforeCallingPaystack(): void
+    {
+        $controller = $this->createController();
+
+        $lastOrder = $this->createMock(Order::class);
+        $lastOrder->method('getIncrementId')->willReturn('000000001');
+        $this->checkoutSession->method('getLastRealOrder')->willReturn($lastOrder);
+
+        $payment = $this->createMock(Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+
+        $order = $this->createMock(Order::class);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getStatus')->willReturn('pending');
+        $order->method('getCustomerFirstname')->willReturn('John');
+        $order->method('getCustomerLastname')->willReturn('Doe');
+        $order->method('getGrandTotal')->willReturn(null);
+        $order->method('getCustomerEmail')->willReturn('john@example.com');
+        $order->method('getIncrementId')->willReturn('000000001');
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $methodInstance = $this->createMock(MethodInterface::class);
+        $methodInstance->method('getCode')->willReturn(Paystack::CODE);
+        $this->paymentHelper->method('getMethodInstance')->willReturn($methodInstance);
+
+        $store = $this->createMock(Store::class);
+        $store->method('getBaseUrl')->willReturn('https://example.com/');
+        $this->storeManager->method('getStore')->willReturn($store);
+
+        $this->paystackClient->expects($this->never())->method('initializeTransaction');
+
+        $order->expects($this->once())
+            ->method('addStatusToHistory')
+            ->with('pending', $this->stringContains('grand total'));
+
+        $controller->execute();
+    }
+
+    /**
+     * A grand total of exactly 0.00 is numeric (unlike null), so it takes the
+     * `is_numeric($grandTotal) ? SubunitConverter::toSubunit(...) : 0` branch
+     * of the guard rather than the "not numeric" else — pinning that a
+     * numeric-but-zero total is rejected too, not just a missing/non-numeric
+     * one. Note: from this test's vantage point the observable outcome
+     * (never call Paystack, same "grand total" history message) is identical
+     * to testMissingGrandTotalIsRejectedBeforeCallingPaystack; it does not by
+     * itself prove SubunitConverter was reached rather than short-circuited,
+     * only that this distinct input value produces the same fail-closed
+     * result.
+     */
+    public function testZeroGrandTotalIsRejectedBeforeCallingPaystack(): void
+    {
+        $controller = $this->createController();
+        $order = $this->primeOrder(0.00, 'NGN');
+        $order->method('getStatus')->willReturn('pending');
+
+        $this->paystackClient->expects($this->never())->method('initializeTransaction');
+
+        $order->expects($this->once())
+            ->method('addStatusToHistory')
+            ->with('pending', $this->stringContains('grand total'));
+
+        $controller->execute();
+    }
+
+    /**
+     * A negative grand total is numeric too, and must be rejected by the same
+     * `$amount <= 0` guard rather than being sent to Paystack as a negative
+     * subunit amount.
+     */
+    public function testNegativeGrandTotalIsRejectedBeforeCallingPaystack(): void
+    {
+        $controller = $this->createController();
+        $order = $this->primeOrder(-19.99, 'NGN');
+        $order->method('getStatus')->willReturn('pending');
+
+        $this->paystackClient->expects($this->never())->method('initializeTransaction');
+
+        $order->expects($this->once())
+            ->method('addStatusToHistory')
+            ->with('pending', $this->stringContains('grand total'));
 
         $controller->execute();
     }

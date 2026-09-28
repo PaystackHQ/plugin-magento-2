@@ -29,12 +29,28 @@ class PaystackApiClient
         if ($this->secretKey === null) {
             $method = $this->paymentHelper->getMethodInstance(PaystackModel::CODE);
             $this->secretKey = $method->getConfigData('live_secret_key');
-            if ($method->getConfigData('test_mode')) {
+            if ($this->isTestMode()) {
                 $this->secretKey = $method->getConfigData('test_secret_key');
             }
             $this->secretKey = (string) $this->secretKey;
         }
         return $this->secretKey;
+    }
+
+    /**
+     * Whether the store is configured for Paystack test mode. The single
+     * source of truth for `payment/pstk_paystack/test_mode` — `getSecretKey()`
+     * calls this internally rather than reading the config a second time, so
+     * the two can never independently drift (the same drift class
+     * `Gateway/SubunitConverter.php` exists to prevent).
+     *
+     * @return bool
+     */
+    public function isTestMode(): bool
+    {
+        return (bool) $this->paymentHelper
+            ->getMethodInstance(PaystackModel::CODE)
+            ->getConfigData('test_mode');
     }
 
     /**

@@ -22,6 +22,8 @@
 
 namespace Pstk\Paystack\Controller\Payment;
 
+use Pstk\Paystack\Gateway\SubunitConverter;
+
 class Setup extends AbstractPaystackStandard {
 
     /**
@@ -60,10 +62,22 @@ class Setup extends AbstractPaystackStandard {
             );
         }
 
+        // Fail closed on a missing/malformed order grand total. A non-numeric or
+        // zero total would silently send amount:0 to Paystack, which would let a
+        // customer "pay" nothing with a success response and no trace. The caller
+        // turns this into order history plus the failure page.
+        $grandTotal = $order->getGrandTotal();
+        $amount = is_numeric($grandTotal) ? SubunitConverter::toSubunit($grandTotal) : 0;
+        if ($amount <= 0) {
+            throw new \Pstk\Paystack\Gateway\Exception\ApiException(
+                'Cannot start a Paystack transaction: the order has no valid grand total.'
+            );
+        }
+
         $tranx = $this->paystackClient->initializeTransaction([
             'first_name' => $order->getCustomerFirstname(),
             'last_name' => $order->getCustomerLastname(),
-            'amount' => (int) round($order->getGrandTotal() * 100), // in kobo (integer, subunit)
+            'amount' => $amount, // in kobo (integer, subunit)
             'email' => $order->getCustomerEmail(), // unique to customers
             'reference' => $order->getIncrementId(), // unique to transactions
             'currency' => $currency,
