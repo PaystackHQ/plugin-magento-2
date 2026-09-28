@@ -7,6 +7,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Controller\Payment\Webhook;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Request\Http as HttpRequest;
@@ -104,7 +105,8 @@ class WebhookTest extends TestCase
             $this->eventManager,
             $this->request,
             $this->logger,
-            $this->paystackClient
+            $this->paystackClient,
+            new TransactionValidator($this->createMock(LoggerInterface::class))
         );
     }
 
