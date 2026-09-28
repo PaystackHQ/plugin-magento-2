@@ -53,9 +53,11 @@ use Pstk\Paystack\Gateway\SubunitConverter;
  * Why not `Magento\Payment\Gateway\Validator\ValidatorInterface` /
  * `Result` / `ValidatorPool`: this module has no gateway-command DI wiring
  * anywhere — no `ValidatorPool`/`CommandPool` in any `etc/**\/di.xml`, and
- * `Model/Payment/Paystack.php` is `AbstractMethod`-based, not
- * `Adapter`-based. Adopting Magento's validator interface here would fight
- * the module's actual architecture for no consumer that asks for it.
+ * `Model/Payment/Paystack.php` is a hand-rolled `MethodInterface`
+ * implementation (`extends DataObject implements MethodInterface`), not
+ * `AbstractMethod`- or `Adapter`-based. Adopting Magento's validator
+ * interface here would fight the module's actual architecture for no
+ * consumer that asks for it.
  */
 class TransactionValidator
 {
