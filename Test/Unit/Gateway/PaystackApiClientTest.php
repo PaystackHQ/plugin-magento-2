@@ -89,6 +89,28 @@ class PaystackApiClientTest extends TestCase
         $this->assertFalse($this->client->validateWebhookSignature('body', ''));
     }
 
+    public function testIsTestModeTrueWhenConfigTestModeIsOn(): void
+    {
+        $this->paymentMethod->method('getConfigData')
+            ->willReturnCallback(function ($field) {
+                if ($field === 'test_mode') return true;
+                return null;
+            });
+
+        $this->assertTrue($this->client->isTestMode());
+    }
+
+    public function testIsTestModeFalseWhenConfigTestModeIsOff(): void
+    {
+        $this->paymentMethod->method('getConfigData')
+            ->willReturnCallback(function ($field) {
+                if ($field === 'test_mode') return false;
+                return null;
+            });
+
+        $this->assertFalse($this->client->isTestMode());
+    }
+
     public function testValidateWebhookSignatureTampered(): void
     {
         $this->paymentMethod->method('getConfigData')
