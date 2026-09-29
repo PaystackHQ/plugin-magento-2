@@ -123,7 +123,7 @@ class WebhookOrderResolverTest extends TestCase
         $order = $this->makeOrder(1);
         $orderInterface = $this->createMock(Order::class);
         $orderInterface->method('getId')->willReturn(1);
-        $resolver = $this->rebuildWith($orderInterface);
+        $resolver = $this->buildResolver($orderInterface);
 
         $this->orderRepository->expects($this->never())->method('getList');
         $this->transactionRepository->expects($this->never())->method('getList');
@@ -131,23 +131,6 @@ class WebhookOrderResolverTest extends TestCase
         $this->assertSame(
             $orderInterface,
             $resolver->resolve('000000001', $this->withMetadata((object) ['quoteId' => '5']))
-        );
-    }
-
-    /** Same wiring as setUp() but with a different increment-id loader. */
-    private function rebuildWith(MockObject $orderInterface): WebhookOrderResolver
-    {
-        $orderInterface->method('loadByIncrementId')->willReturnSelf();
-        $builder = $this->createMock(SearchCriteriaBuilder::class);
-        $builder->method('addFilter')->willReturnSelf();
-        $builder->method('create')->willReturn($this->createMock(SearchCriteriaInterface::class));
-        return new WebhookOrderResolver(
-            $this->orderRepository,
-            $builder,
-            $this->transactionRepository,
-            $orderInterface,
-            new TransactionValidator($this->createMock(LoggerInterface::class)),
-            $this->createMock(LoggerInterface::class)
         );
     }
 
@@ -174,12 +157,20 @@ class WebhookOrderResolverTest extends TestCase
 
         $this->assertSame(
             $bound,
-            $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '9', 'orderId' => '7']))
+            $this->buildResolver()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '9', 'orderId' => '7']))
         );
     }
 
-    private function resolverWithTransactions(): WebhookOrderResolver
+    /**
+     * A resolver over the current repository mocks with a plain (non-stateful)
+     * builder — setUp()'s stateful one is only needed by tests that inspect
+     * filters. Pass $orderInterface to swap in a different increment-id loader.
+     */
+    private function buildResolver(?MockObject $orderInterface = null): WebhookOrderResolver
     {
+        if ($orderInterface !== null) {
+            $orderInterface->method('loadByIncrementId')->willReturnSelf();
+        }
         $builder = $this->createMock(SearchCriteriaBuilder::class);
         $builder->method('addFilter')->willReturnSelf();
         $builder->method('create')->willReturn($this->createMock(SearchCriteriaInterface::class));
@@ -187,7 +178,7 @@ class WebhookOrderResolverTest extends TestCase
             $this->orderRepository,
             $builder,
             $this->transactionRepository,
-            $this->orderInterface,
+            $orderInterface ?? $this->orderInterface,
             new TransactionValidator($this->createMock(LoggerInterface::class)),
             $this->createMock(LoggerInterface::class)
         );
@@ -310,7 +301,7 @@ class WebhookOrderResolverTest extends TestCase
         // No usable metadata to fall through to, so skipping the binding
         // leaves nothing to resolve — it must not settle a non-Paystack order.
         $this->assertNull(
-            $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) []))
+            $this->buildResolver()->resolve('PSK_1', $this->withMetadata((object) []))
         );
     }
 
@@ -336,7 +327,7 @@ class WebhookOrderResolverTest extends TestCase
 
         $this->assertSame(
             $lone,
-            $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '9']))
+            $this->buildResolver()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '9']))
         );
     }
 
@@ -543,6 +534,6 @@ class WebhookOrderResolverTest extends TestCase
         $this->transactionRepository->method('getList')->willThrowException(new \RuntimeException('db gone away'));
 
         $this->expectException(\RuntimeException::class);
-        $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '55']));
+        $this->buildResolver()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '55']));
     }
 }

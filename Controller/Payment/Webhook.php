@@ -51,13 +51,9 @@ class Webhook extends AbstractPaystackStandard
      *   method mixup is never fixed by a retry either, but recording it here
      *   (rather than as permanent) keeps the retry window open in case the
      *   underlying relation was simply not yet hydrated.
-     * - REASON_ORDER_NOT_PAYABLE: a not-yet state (holded, payment_review, ...)
-     *   that may become payable, so the charge keeps retrying. Closed orders
-     *   (canceled/closed/complete, incl. cancelled via `/paystack/payment/recreate`)
-     *   return REASON_ORDER_CLOSED instead and are acknowledged once the
-     *   rejection is recorded (see TransactionValidator::REASON_ORDER_CLOSED).
-     *   Deliberately NOT PERMANENT_FOR_WEBHOOK, unlike
-     *   REASON_REFERENCE_BOUND_ELSEWHERE, which is not time-dependent.
+     * - REASON_ORDER_NOT_PAYABLE: a not-yet state that keeps retrying; closed
+     *   orders are REASON_ORDER_CLOSED instead (see the rationale on those two
+     *   TransactionValidator constants).
      * - REASON_REGISTRATION_FAILED: a throw from PaymentSettlement::register()'s
      *   own bind/register/save steps after every check already passed — a
      *   transient DB/invoice issue should keep retrying, since money may

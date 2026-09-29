@@ -79,8 +79,7 @@ class TransactionValidator
      * whether or not the history write succeeded); PaymentSettlement's
      * `historyRecorded` tells the webhook whether the rejection is durably on
      * the order, and it acknowledges (200) only then — instead of retrying for
-     * Paystack's ~72h budget, which risks endpoint back-off (industry standard:
-     * ack with 2xx once the problem is recorded). Never RETRYABLE_FOR_CUSTOMER
+     * Paystack's ~72h budget, which risks endpoint back-off. Never RETRYABLE_FOR_CUSTOMER
      * — money moved, fail closed.
      */
     public const REASON_ORDER_CLOSED = 'order_closed';

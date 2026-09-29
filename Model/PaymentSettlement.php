@@ -96,7 +96,8 @@ class PaymentSettlement
      *     rejection's history line is durably on the order; false when that
      *     write failed, or when nothing was recorded at all (early MALFORMED
      *     returns, REASON_IN_FLIGHT) — the webhook only acknowledges a
-     *     permanent rejection of a real charge once this is true. `order` is the settled
+     *     rejection of a real charge once this is true (see
+     *     TransactionValidator::REASON_ORDER_CLOSED). `order` is the settled
      *     instance this method actually mutated and saved (or, when nothing
      *     could safely be validated/registered against, the best available
      *     instance) — callers must dispatch/reference THIS instance, not
@@ -215,10 +216,8 @@ class PaymentSettlement
         // effect, so a re-verify of an already-advanced order must hit step
         // 3's no-op before this guard could mistake it for not-payable.
         if (!$this->transactionValidator->isPayable($freshOrder)) {
-            // A terminal order can never take this money, so the reason is
-            // always ORDER_CLOSED (deterministic for the consumers); whether
-            // the webhook may acknowledge it depends on `historyRecorded`, so
-            // it retries until the rejection is durably on the order.
+            // Terminal vs not-yet: see TransactionValidator::REASON_ORDER_CLOSED
+            // / REASON_ORDER_NOT_PAYABLE.
             $reason = $this->transactionValidator->isClosedForPayment($freshOrder)
                 ? TransactionValidator::REASON_ORDER_CLOSED
                 : TransactionValidator::REASON_ORDER_NOT_PAYABLE;
@@ -332,29 +331,21 @@ class PaymentSettlement
 
         $isClosed = TransactionValidator::REASON_ORDER_CLOSED === $reason;
 
-        // Two wordings, matching Webhook.php's pre-hoist recordHistory():
-        // "rejected" for reasons a retry can never fix, "not applied yet
-        // (retry pending)" for reasons that may still resolve on their own
-        // (e.g. REASON_MODE_MISMATCH) — collapsing both to "rejected"
-        // regardless of permanence would misrepresent a still-retrying
-        // reason as decided.
-        $isPermanent = $this->transactionValidator->isPermanentForWebhook($reason);
-
         if ($isClosed) {
-            return $this->writeHistory(
-                $order,
-                $reference,
-                $reason,
-                sprintf(
-                    'Paystack: payment received after this order was closed (%s): paid %s %s, expected %s %s, reference %s. If this charge is not already reflected on the order, refund or reconcile it.',
-                    $reason,
-                    $paidAmount,
-                    $paidCurrency,
-                    $expectedSubunits,
-                    $order->getOrderCurrencyCode(),
-                    $reference
-                )
-            );
+            $lead = sprintf('received after this order was closed (%s)', $reason);
+            $suffix = '. If this charge is not already reflected on the order, refund or reconcile it.';
+        } else {
+            // Two wordings, matching Webhook.php's pre-hoist recordHistory():
+            // "rejected" for reasons a retry can never fix, "not applied yet
+            // (retry pending)" for reasons that may still resolve on their own
+            // (e.g. REASON_MODE_MISMATCH) — collapsing both to "rejected"
+            // regardless of permanence would misrepresent a still-retrying
+            // reason as decided.
+            $verdict = $this->transactionValidator->isPermanentForWebhook($reason)
+                ? 'rejected'
+                : 'not applied (retry pending)';
+            $lead = sprintf('%s — %s', $verdict, $reason);
+            $suffix = '';
         }
 
         return $this->writeHistory(
@@ -362,15 +353,16 @@ class PaymentSettlement
             $reference,
             $reason,
             sprintf(
-                'Paystack: payment %s — %s: paid %s %s, expected %s %s, reference %s',
-                $isPermanent ? 'rejected' : 'not applied (retry pending)',
-                $reason,
+                'Paystack: payment %s: paid %s %s, expected %s %s, reference %s%s',
+                $lead,
                 $paidAmount,
                 $paidCurrency,
                 $expectedSubunits,
                 $order->getOrderCurrencyCode(),
-                $reference
-            )
+                $reference,
+                $suffix
+            ),
+            $isClosed
         );
     }
 
@@ -431,12 +423,17 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reasonKey
      * @param string $comment
+     * @param bool   $isClosed Whether the reason is REASON_ORDER_CLOSED — picks the log levels above.
      * @return bool True when the (reference, reason) record is durably on the
      *     order: the marker was already present, or it was appended and saved.
      */
-    private function writeHistory(Order $order, string $reference, string $reasonKey, string $comment): bool
-    {
-        $isClosed = TransactionValidator::REASON_ORDER_CLOSED === $reasonKey;
+    private function writeHistory(
+        Order $order,
+        string $reference,
+        string $reasonKey,
+        string $comment,
+        bool $isClosed
+    ): bool {
         $context = [
             'reason' => $reasonKey,
             'reference' => $reference,
@@ -445,11 +442,11 @@ class PaymentSettlement
         $message = 'Paystack: settlement registration rejected';
 
         $appended = $this->appendHistoryComment($order, $reference, $reasonKey, $comment);
+        if ($appended === self::HISTORY_PRESENT) {
+            $this->logger->{$isClosed ? 'info' : 'warning'}($message, $context);
+            return true;
+        }
         if ($appended !== self::HISTORY_APPENDED) {
-            if ($appended === self::HISTORY_PRESENT) {
-                $this->logger->{$isClosed ? 'info' : 'warning'}($message, $context);
-                return true;
-            }
             $this->logger->critical($message, $context);
             return false;
         }

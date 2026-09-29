@@ -134,11 +134,7 @@ class WebhookOrderResolver
         // Step 3: the exact order the popup placed, when the checkout sent it.
         $orderId = $this->parseId($metadata->orderId ?? null);
         if (null !== $orderId) {
-            $searchCriteria = $this->searchCriteriaBuilder
-                ->addFilter('entity_id', $orderId, 'eq')
-                ->addFilter('quote_id', $quoteId, 'eq')
-                ->create();
-            $matches = array_values($this->orderRepository->getList($searchCriteria)->getItems());
+            $matches = $this->findOrders(['entity_id' => $orderId, 'quote_id' => $quoteId]);
             if (1 === count($matches) && $this->transactionValidator->isPaystackOrder($matches[0])) {
                 return $matches[0];
             }
@@ -153,10 +149,7 @@ class WebhookOrderResolver
         }
 
         // Step 4: quote fallback.
-        $searchCriteria = $this->searchCriteriaBuilder
-            ->addFilter('quote_id', $quoteId, 'eq')
-            ->create();
-        $candidates = array_values($this->orderRepository->getList($searchCriteria)->getItems());
+        $candidates = $this->findOrders(['quote_id' => $quoteId]);
 
         if (1 === count($candidates)) {
             return $candidates[0];
@@ -207,12 +200,20 @@ class WebhookOrderResolver
      */
     private function findOrder($orderId): ?OrderInterface
     {
-        $searchCriteria = $this->searchCriteriaBuilder
-            ->addFilter('entity_id', $orderId, 'eq')
-            ->create();
-        $items = array_values($this->orderRepository->getList($searchCriteria)->getItems());
+        return $this->findOrders(['entity_id' => $orderId])[0] ?? null;
+    }
 
-        return $items[0] ?? null;
+    /**
+     * @param array<string, mixed> $filters field => value, all matched with 'eq'
+     * @return OrderInterface[]
+     */
+    private function findOrders(array $filters): array
+    {
+        foreach ($filters as $field => $value) {
+            $this->searchCriteriaBuilder->addFilter($field, $value, 'eq');
+        }
+
+        return array_values($this->orderRepository->getList($this->searchCriteriaBuilder->create())->getItems());
     }
 
     /**
