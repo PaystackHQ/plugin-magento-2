@@ -457,6 +457,67 @@ class SetupTest extends TestCase
             ->method('save')
             ->with($order);
 
+        // The raw ApiException message ("Invalid key" — built from curl_error()
+        // and Paystack's raw response body in real use) must never reach the
+        // customer-facing failure page; only the fixed, safe string may.
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($message) {
+                $text = (string) $message;
+                return !str_contains($text, 'Invalid key')
+                    && str_contains($text, 'We could not start your Paystack payment');
+            }));
+
+        $controller->execute();
+    }
+
+    public function testGenericThrowableShowsSafeMessageAndDoesNotLeakDetail(): void
+    {
+        $controller = $this->createController();
+
+        $lastOrder = $this->createMock(Order::class);
+        $lastOrder->method('getIncrementId')->willReturn('000000001');
+        $this->checkoutSession->method('getLastRealOrder')->willReturn($lastOrder);
+
+        $payment = $this->createMock(Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+
+        $order = $this->createMock(Order::class);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getStatus')->willReturn('pending');
+        $order->method('getCustomerFirstname')->willReturn('John');
+        $order->method('getCustomerLastname')->willReturn('Doe');
+        $order->method('getGrandTotal')->willReturn(100.00);
+        $order->method('getCustomerEmail')->willReturn('john@test.com');
+        $order->method('getIncrementId')->willReturn('000000001');
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $methodInstance = $this->createMock(MethodInterface::class);
+        $methodInstance->method('getCode')->willReturn(Paystack::CODE);
+        $this->paymentHelper->method('getMethodInstance')->willReturn($methodInstance);
+
+        $store = $this->createMock(Store::class);
+        $store->method('getBaseUrl')->willReturn('https://example.com/');
+        $this->storeManager->method('getStore')->willReturn($store);
+
+        $this->transactionValidator->method('expectedSubunits')->willReturn(10000);
+
+        // A non-ApiException throwable (e.g. a malformed Paystack response, a
+        // missing store URL) must be caught too — not just ApiException — and
+        // must never surface its own message to the customer.
+        $this->paystackClient->method('initializeTransaction')
+            ->willThrowException(new \RuntimeException('unexpected internal detail'));
+
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($message) {
+                $text = (string) $message;
+                return !str_contains($text, 'unexpected internal detail')
+                    && str_contains($text, 'We could not start your Paystack payment');
+            }));
+
         $controller->execute();
     }
 }
