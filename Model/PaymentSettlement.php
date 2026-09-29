@@ -50,6 +50,9 @@ use Psr\Log\LoggerInterface;
  */
 class PaymentSettlement
 {
+    private const HISTORY_APPENDED = 'appended';
+    private const HISTORY_PRESENT = 'present';
+
     /** @var TransactionValidator */
     private $transactionValidator;
 
@@ -202,6 +205,23 @@ class PaymentSettlement
         // effect, so a re-verify of an already-advanced order must hit step
         // 3's no-op before this guard could mistake it for not-payable.
         if (!$this->transactionValidator->isPayable($freshOrder)) {
+            // A terminal order can never take this money, so once the
+            // rejection is durably on its history the webhook may acknowledge
+            // instead of retrying for ~72h. If it could not be recorded, stay
+            // ORDER_NOT_PAYABLE so the retry keeps trying to record it.
+            if ($this->transactionValidator->isClosedForPayment($freshOrder)) {
+                $recorded = $this->recordRejection(
+                    $freshOrder,
+                    $reference,
+                    TransactionValidator::REASON_ORDER_CLOSED,
+                    $transactionDetails
+                );
+                $reason = $recorded
+                    ? TransactionValidator::REASON_ORDER_CLOSED
+                    : TransactionValidator::REASON_ORDER_NOT_PAYABLE;
+                return ['reason' => $reason, 'order' => $freshOrder];
+            }
+
             $this->recordRejection(
                 $freshOrder,
                 $reference,
@@ -297,9 +317,10 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reason
      * @param object $transactionDetails Full envelope PaystackApiClient::verifyTransaction() returns
-     * @return void
+     * @return bool True when the rejection is durably on the order's history
+     *     (see writeHistory()).
      */
-    private function recordRejection(Order $order, string $reference, string $reason, object $transactionDetails): void
+    private function recordRejection(Order $order, string $reference, string $reason, object $transactionDetails): bool
     {
         $paidAmount = $this->transactionValidator->paidSubunits($transactionDetails) ?? 'unknown';
         // Guarded the same way TransactionValidator::allowListedContext()
@@ -324,7 +345,7 @@ class PaymentSettlement
         // reason as decided.
         $isPermanent = $this->transactionValidator->isPermanentForWebhook($reason);
 
-        $this->writeHistory(
+        return $this->writeHistory(
             $order,
             $reference,
             $reason,
@@ -353,26 +374,27 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reasonKey
      * @param string $comment
-     * @return bool True when a new comment was actually appended (not a
-     *     dedupe no-op or a failed write) — tells writeHistory() below
-     *     whether a save is even warranted.
+     * @return string|null HISTORY_APPENDED when a new comment was appended,
+     *     HISTORY_PRESENT for a dedupe no-op, null for a failed write —
+     *     tells writeHistory() below whether a save is warranted and whether
+     *     the record already exists.
      */
-    private function appendHistoryComment(Order $order, string $reference, string $reasonKey, string $comment): bool
+    private function appendHistoryComment(Order $order, string $reference, string $reasonKey, string $comment): ?string
     {
         $marker = $this->historyMarker($reference, $reasonKey);
         try {
             foreach ($order->getStatusHistories() ?? [] as $history) {
                 $existingComment = $history->getComment() ?? '';
                 if (strpos($existingComment, $marker) !== false) {
-                    return false;
+                    return self::HISTORY_PRESENT;
                 }
             }
 
             $order->addStatusToHistory($order->getStatus(), $comment . ' ' . $marker);
-            return true;
+            return self::HISTORY_APPENDED;
         } catch (\Throwable $exc) {
             $this->logger->error('Paystack: failed to write order history', ['error' => $exc->getMessage()]);
-            return false;
+            return null;
         }
     }
 
@@ -389,18 +411,22 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reasonKey
      * @param string $comment
-     * @return void
+     * @return bool True when the (reference, reason) record is durably on the
+     *     order: the marker was already present, or it was appended and saved.
      */
-    private function writeHistory(Order $order, string $reference, string $reasonKey, string $comment): void
+    private function writeHistory(Order $order, string $reference, string $reasonKey, string $comment): bool
     {
-        if (!$this->appendHistoryComment($order, $reference, $reasonKey, $comment)) {
-            return;
+        $appended = $this->appendHistoryComment($order, $reference, $reasonKey, $comment);
+        if ($appended !== self::HISTORY_APPENDED) {
+            return $appended === self::HISTORY_PRESENT;
         }
 
         try {
             $this->orderRepository->save($order);
+            return true;
         } catch (\Throwable $exc) {
             $this->logger->error('Paystack: failed to write order history', ['error' => $exc->getMessage()]);
+            return false;
         }
     }
 }

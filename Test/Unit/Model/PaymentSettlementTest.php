@@ -325,11 +325,49 @@ class PaymentSettlementTest extends TestCase
         $this->assertSame(TransactionValidator::REASON_ORDER_NOT_PAYABLE, $result['reason']);
     }
 
-    public function testOrderNotInPayableStateIsRejected(): void
+    /**
+     * @dataProvider terminalStateProvider
+     */
+    public function testTerminalOrderStateIsRejectedAsOrderClosed(string $state): void
     {
         $this->noExistingBindings();
 
-        $order = $this->makeOrder($this->makePaystackPayment(), 1, Order::STATE_CANCELED);
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, $state);
+        $freshOrder = $this->orderRepository->get(1);
+
+        $freshOrder->getPayment()->expects($this->never())->method('registerCaptureNotification');
+        $freshOrder->expects($this->once())
+            ->method('addStatusToHistory')
+            ->with($this->anything(), $this->stringContains('[paystack:PSK_ref_123:order_closed]'));
+        $this->orderRepository->expects($this->once())->method('save')->with($freshOrder);
+
+        $result = $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+
+        $this->assertSame(TransactionValidator::REASON_ORDER_CLOSED, $result['reason']);
+        $this->assertSame($freshOrder, $result['order']);
+    }
+
+    public static function terminalStateProvider(): array
+    {
+        return [
+            'canceled' => [Order::STATE_CANCELED],
+            'closed' => [Order::STATE_CLOSED],
+            'complete' => [Order::STATE_COMPLETE],
+        ];
+    }
+
+    /**
+     * @dataProvider recoverableNotPayableStateProvider
+     */
+    public function testNonTerminalNotPayableStateStaysOrderNotPayable(string $state): void
+    {
+        $this->noExistingBindings();
+
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, $state);
         $freshOrder = $this->orderRepository->get(1);
 
         $freshOrder->getPayment()->expects($this->never())->method('registerCaptureNotification');
@@ -346,7 +384,64 @@ class PaymentSettlementTest extends TestCase
         $this->assertSame(TransactionValidator::REASON_ORDER_NOT_PAYABLE, $result['reason']);
     }
 
-    public function testZeroBaseTotalDueIsRejectedAsNotPayable(): void
+    public static function recoverableNotPayableStateProvider(): array
+    {
+        return [
+            'holded' => [Order::STATE_HOLDED],
+            'payment_review' => [Order::STATE_PAYMENT_REVIEW],
+        ];
+    }
+
+    /**
+     * Terminal, but the rejection history could not be saved: the webhook must
+     * keep retrying until it can be recorded, so this is ORDER_NOT_PAYABLE.
+     */
+    public function testTerminalOrderWhoseHistoryCannotBeSavedStaysOrderNotPayable(): void
+    {
+        $this->noExistingBindings();
+
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, Order::STATE_CANCELED);
+        $this->orderRepository->method('save')->willThrowException(new \RuntimeException('db down'));
+
+        $result = $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+
+        $this->assertSame(TransactionValidator::REASON_ORDER_NOT_PAYABLE, $result['reason']);
+    }
+
+    /**
+     * Retry of an already-recorded terminal rejection: the marker is durable
+     * proof, so ORDER_CLOSED is returned with no second comment or save.
+     */
+    public function testTerminalOrderWithMarkerAlreadyPresentIsClosedWithoutRewriting(): void
+    {
+        $this->noExistingBindings();
+
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, Order::STATE_CANCELED);
+        $freshOrder = $this->orderRepository->get(1);
+
+        $existingHistory = $this->createMock(OrderStatusHistoryInterface::class);
+        $existingHistory->method('getComment')->willReturn(
+            'Paystack: payment rejected. [paystack:PSK_ref_123:order_closed]'
+        );
+        $freshOrder->method('getStatusHistories')->willReturn([$existingHistory]);
+
+        $freshOrder->expects($this->never())->method('addStatusToHistory');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $result = $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+
+        $this->assertSame(TransactionValidator::REASON_ORDER_CLOSED, $result['reason']);
+    }
+
+    public function testZeroBaseTotalDueIsRejectedAsOrderClosed(): void
     {
         $this->noExistingBindings();
 
@@ -384,7 +479,7 @@ class PaymentSettlementTest extends TestCase
             true
         );
 
-        $this->assertSame(TransactionValidator::REASON_ORDER_NOT_PAYABLE, $result['reason']);
+        $this->assertSame(TransactionValidator::REASON_ORDER_CLOSED, $result['reason']);
     }
 
     /**

@@ -58,19 +58,33 @@ class TransactionValidator
     public const REASON_REFERENCE_BOUND_ELSEWHERE = 'reference_bound_elsewhere';
 
     /**
-     * The order is not in a state (STATE_NEW/STATE_PENDING_PAYMENT) that can
-     * still be registered as paid — e.g. canceled/closed. Never
-     * RETRYABLE_FOR_CUSTOMER (money moved or the situation is otherwise
-     * unrecoverable by retry — fail closed there), but deliberately NOT
-     * PERMANENT_FOR_WEBHOOK, unlike REASON_REFERENCE_BOUND_ELSEWHERE: a
-     * bank-transfer/USSD charge that is genuinely `pending` at callback time
-     * can settle minutes later via the webhook, and if the customer used
-     * `/paystack/payment/recreate` in the meantime the order is now
-     * `canceled` — a late but genuine `charge.success` must keep retrying
+     * The order is not payable right now, but the state may still change
+     * (holded, payment_review, ...) — or it is terminal (see
+     * REASON_ORDER_CLOSED) but the rejection history could not be durably
+     * recorded yet. Never RETRYABLE_FOR_CUSTOMER (money moved or the situation
+     * is otherwise unrecoverable by retry — fail closed there), but
+     * deliberately NOT PERMANENT_FOR_WEBHOOK, unlike
+     * REASON_REFERENCE_BOUND_ELSEWHERE: a bank-transfer/USSD charge that is
+     * genuinely `pending` at callback time can settle minutes later via the
+     * webhook, and an order that is held or under payment review may become
+     * payable again — a late but genuine `charge.success` must keep retrying
      * (Webhook.php's own `NEVER_RECENCY_BOUNDED`), not be permanently
      * dropped, or the money is captured with no order and no refund path.
      */
     public const REASON_ORDER_NOT_PAYABLE = 'order_not_payable';
+
+    /**
+     * The order can never take this money: canceled/closed/complete, or nothing
+     * left due (e.g. already paid by another reference) — see
+     * isClosedForPayment(). Returned only once the rejection has been durably
+     * recorded on the order's history, so the webhook acknowledges (permanent,
+     * 200) instead of retrying for Paystack's ~72h budget, which risks endpoint
+     * back-off (industry standard: ack with 2xx once the problem is recorded).
+     * Never RETRYABLE_FOR_CUSTOMER — money moved, fail closed. When the history
+     * could not be recorded, PaymentSettlement returns REASON_ORDER_NOT_PAYABLE
+     * instead, so the webhook keeps retrying until it can be.
+     */
+    public const REASON_ORDER_CLOSED = 'order_closed';
 
     /**
      * A throw from `Model/PaymentSettlement::register()`'s own bind/register/
@@ -129,6 +143,7 @@ class TransactionValidator
         self::REASON_CURRENCY_MISMATCH,
         self::REASON_ZERO_TOTAL,
         self::REASON_REFERENCE_BOUND_ELSEWHERE,
+        self::REASON_ORDER_CLOSED,
     ];
 
     /** @var LoggerInterface */
@@ -184,6 +199,24 @@ class TransactionValidator
     {
         return in_array($order->getState(), [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT], true)
             && $order->getBaseTotalDue() > 0;
+    }
+
+    /**
+     * True when the order can never take a payment: a terminal state
+     * (canceled/closed/complete) or nothing left due. Distinct from merely
+     * !isPayable(): holded/payment_review orders are not payable *yet* and are
+     * deliberately not closed here.
+     *
+     * @param OrderInterface $order
+     * @return bool
+     */
+    public function isClosedForPayment(OrderInterface $order): bool
+    {
+        return in_array(
+            $order->getState(),
+            [Order::STATE_CANCELED, Order::STATE_CLOSED, Order::STATE_COMPLETE],
+            true
+        ) || $order->getBaseTotalDue() <= 0;
     }
 
     /**
