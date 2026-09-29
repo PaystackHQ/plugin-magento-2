@@ -5,7 +5,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 The entries below cover every release since the last tag, **v3.0.10**.
 
-## [Unreleased]
+## [3.1.0] - 2026-09-29
 
 Every payment-verification path now confirms, from Paystack's verify response,
 that the transaction actually settles the order before the order is advanced
@@ -60,8 +60,18 @@ what was requested.
   `ObserverBeforeSalesOrderPlace` would have caused a duplicate email (the
   unsuppressed placement email, plus a new post-payment one); both are
   registered together.
-
-### Security
+- **`Controller/Payment/Setup.php` no longer leaks internal gateway detail to
+  the customer.** A Paystack API failure during the redirect/standard
+  checkout flow showed the raw exception message — built from `curl_error()`
+  and Paystack's raw response body, which can carry internal hostnames, TLS
+  detail, or gateway-side state — directly on the storefront failure page.
+  The same leak class was already closed on the redirect callback route; this
+  was the one place it was missed. The customer now gets a fixed, safe
+  message; the raw detail goes to the log and order history (admin-only).
+  Also closes a gap where only `ApiException` was caught — any other
+  exception this route can throw (a missing store URL, a malformed Paystack
+  response, an order-save failure) now gets the same safe handling instead of
+  escaping uncaught.
 - **A single Paystack reference can no longer settle two different orders
   (D7, narrowed to a race window — not fully closed; see the reconciliation
   plan's Risks section).** All three verification paths now bind the
