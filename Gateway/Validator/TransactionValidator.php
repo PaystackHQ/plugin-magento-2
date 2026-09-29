@@ -59,9 +59,8 @@ class TransactionValidator
 
     /**
      * The order is not payable right now, but the state may still change
-     * (holded, payment_review, ...) — or it is terminal (see
-     * REASON_ORDER_CLOSED) but the rejection history could not be durably
-     * recorded yet. Never RETRYABLE_FOR_CUSTOMER (money moved or the situation
+     * (holded, payment_review, ...). Terminal orders are REASON_ORDER_CLOSED,
+     * never this. Never RETRYABLE_FOR_CUSTOMER (money moved or the situation
      * is otherwise unrecoverable by retry — fail closed there), but
      * deliberately NOT PERMANENT_FOR_WEBHOOK, unlike
      * REASON_REFERENCE_BOUND_ELSEWHERE: a bank-transfer/USSD charge that is
@@ -76,13 +75,13 @@ class TransactionValidator
     /**
      * The order can never take this money: canceled/closed/complete, or nothing
      * left due (e.g. already paid by another reference) — see
-     * isClosedForPayment(). Returned only once the rejection has been durably
-     * recorded on the order's history, so the webhook acknowledges (permanent,
-     * 200) instead of retrying for Paystack's ~72h budget, which risks endpoint
-     * back-off (industry standard: ack with 2xx once the problem is recorded).
-     * Never RETRYABLE_FOR_CUSTOMER — money moved, fail closed. When the history
-     * could not be recorded, PaymentSettlement returns REASON_ORDER_NOT_PAYABLE
-     * instead, so the webhook keeps retrying until it can be.
+     * isClosedForPayment(). Always returned for such an order (deterministic,
+     * whether or not the history write succeeded); PaymentSettlement's
+     * `historyRecorded` tells the webhook whether the rejection is durably on
+     * the order, and it acknowledges (200) only then — instead of retrying for
+     * Paystack's ~72h budget, which risks endpoint back-off (industry standard:
+     * ack with 2xx once the problem is recorded). Never RETRYABLE_FOR_CUSTOMER
+     * — money moved, fail closed.
      */
     public const REASON_ORDER_CLOSED = 'order_closed';
 
@@ -269,6 +268,24 @@ class TransactionValidator
         }
 
         return (int) $rawAmount;
+    }
+
+    /**
+     * Whether a verify response's `data` describes a charge that actually moved
+     * money: a successful status on anything but the test domain. An unreadable
+     * `domain` counts as real — the safe side, since this only ever decides
+     * whether a lost history line is worth a retry.
+     *
+     * @param mixed $data The verify response's `data` property
+     * @return bool
+     */
+    public function chargeIsReal($data): bool
+    {
+        if (!is_object($data) || ($data->status ?? null) !== 'success') {
+            return false;
+        }
+
+        return ($data->domain ?? null) !== 'test';
     }
 
     /**

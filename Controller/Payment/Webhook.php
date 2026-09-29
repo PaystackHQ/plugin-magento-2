@@ -51,14 +51,13 @@ class Webhook extends AbstractPaystackStandard
      *   method mixup is never fixed by a retry either, but recording it here
      *   (rather than as permanent) keeps the retry window open in case the
      *   underlying relation was simply not yet hydrated.
-     * - REASON_ORDER_NOT_PAYABLE: a bank-transfer/USSD charge that is
-     *   genuinely `pending` at callback time can settle minutes later via
-     *   this webhook — if the customer used `/paystack/payment/recreate` in
-     *   the meantime, the order is now `canceled`, and a late but genuine
-     *   `charge.success` must not be permanently dropped (money captured
-     *   with no order and no refund path). Deliberately NOT
-     *   PERMANENT_FOR_WEBHOOK, unlike REASON_REFERENCE_BOUND_ELSEWHERE, which
-     *   is not time-dependent.
+     * - REASON_ORDER_NOT_PAYABLE: a not-yet state (holded, payment_review, ...)
+     *   that may become payable, so the charge keeps retrying. Closed orders
+     *   (canceled/closed/complete, incl. cancelled via `/paystack/payment/recreate`)
+     *   return REASON_ORDER_CLOSED instead and are acknowledged once the
+     *   rejection is recorded (see TransactionValidator::REASON_ORDER_CLOSED).
+     *   Deliberately NOT PERMANENT_FOR_WEBHOOK, unlike
+     *   REASON_REFERENCE_BOUND_ELSEWHERE, which is not time-dependent.
      * - REASON_REGISTRATION_FAILED: a throw from PaymentSettlement::register()'s
      *   own bind/register/save steps after every check already passed — a
      *   transient DB/invoice issue should keep retrying, since money may
@@ -253,7 +252,18 @@ class Webhook extends AbstractPaystackStandard
         $isPermanentReason = $this->transactionValidator->isPermanentForWebhook($reason);
 
         if ($isPermanentReason) {
-            return [200, "rejected"];
+            // Acknowledge only once the rejection is durably on the order's
+            // history: for a real charge that line is the merchant's only trace
+            // of money held with no order, so retry (503) until it is written.
+            // A charge that moved no real money (failed, or test domain) is not
+            // worth a ~72h retry over a lost history line.
+            if ($registration['historyRecorded']
+                || !$this->transactionValidator->chargeIsReal($transactionDetails->data ?? null)
+            ) {
+                return [200, "rejected"];
+            }
+
+            return [503, "unverified"];
         }
 
         if (in_array($reason, self::NEVER_RECENCY_BOUNDED, true)) {

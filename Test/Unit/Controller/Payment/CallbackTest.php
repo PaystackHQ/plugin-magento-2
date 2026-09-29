@@ -627,6 +627,45 @@ class CallbackTest extends TestCase
     }
 
     /**
+     * A charge for a canceled order comes back from register() as
+     * REASON_ORDER_CLOSED — a reason the customer copy has no branch for, so it
+     * gets the same fail-closed "do not pay again" message as
+     * REASON_ORDER_NOT_PAYABLE and never dispatches.
+     */
+    public function testClosedOrderShowsTheSameFailClosedMessageAsNotPayable(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn('000000001');
+        $order->method('getEntityId')->willReturn(1);
+        $order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $this->orderRepository->method('get')->with(1)->willReturn($order);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $expected = (new TransactionValidator($this->createMock(LoggerInterface::class)))
+            ->customerMessage(TransactionValidator::REASON_ORDER_NOT_PAYABLE);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($expected);
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+
+        $controller->execute();
+    }
+
+    /**
      * A settled-looking `success` status against a zero/negative expected or paid
      * total must not settle the order — the fourth settlement-gate reason,
      * completing copy coverage for all of customerMessage()'s default-bucket

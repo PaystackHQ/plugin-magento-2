@@ -40,6 +40,9 @@ class WebhookOrderResolverTest extends TestCase
     /** @var callable|null fn(array $filters): array — orders getList() returns */
     private $orderQuery;
 
+    /** @var MockObject|LoggerInterface */
+    private $logger;
+
     protected function setUp(): void
     {
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
@@ -47,6 +50,7 @@ class WebhookOrderResolverTest extends TestCase
         $this->orderInterface = $this->createMock(Order::class);
         $this->orderInterface->method('getId')->willReturn(null);
         $this->criteriaFilters = new \SplObjectStorage();
+        $this->logger = $this->createMock(LoggerInterface::class);
 
         // Stateful like the real builder: filters accumulate until create().
         $builder = $this->createMock(SearchCriteriaBuilder::class);
@@ -76,7 +80,7 @@ class WebhookOrderResolverTest extends TestCase
             $this->transactionRepository,
             $this->orderInterface,
             new TransactionValidator($this->createMock(LoggerInterface::class)),
-            $this->createMock(LoggerInterface::class)
+            $this->logger
         );
     }
 
@@ -250,6 +254,64 @@ class WebhookOrderResolverTest extends TestCase
         $this->orderRepository->expects($this->never())->method('getList');
 
         $this->assertNull($this->resolver->resolve('PSK_1', $this->withMetadata((object) ['orderId' => '12'])));
+    }
+
+    public function testMissingOrderIdLogsQuoteLookupFallback(): void
+    {
+        $lone = $this->makeOrder(3);
+        $this->orderQuery = function () use ($lone) {
+            return [$lone];
+        };
+        $messages = [];
+        $this->logger->method('info')->willReturnCallback(function (string $message) use (&$messages): void {
+            $messages[] = $message;
+        });
+        $this->logger->expects($this->never())->method('error');
+
+        $this->assertSame($lone, $this->resolver->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '55'])));
+        $this->assertContains('Paystack Webhook: no metadata.orderId, using quote lookup', $messages);
+    }
+
+    public function testUnresolvableQuoteCandidatesAreLoggedAtError(): void
+    {
+        // Two canceled siblings: neither is payable, so none can be chosen.
+        $first = $this->makeOrder(3, Order::STATE_CANCELED);
+        $second = $this->makeOrder(4, Order::STATE_CANCELED);
+        $this->orderQuery = function () use ($first, $second) {
+            return [$first, $second];
+        };
+        $this->logger->expects($this->once())
+            ->method('error')
+            ->with(
+                $this->stringContains('none can be chosen'),
+                $this->callback(function (array $context): bool {
+                    return 'PSK_1' === $context['reference'] && 2 === count($context['candidates']);
+                })
+            );
+
+        $this->assertNull($this->resolver->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '55'])));
+    }
+
+    public function testBoundReferenceOnNonPaystackOrderIsSkipped(): void
+    {
+        $bound = $this->makeOrder(5, Order::STATE_PROCESSING, 0.0, 'checkmo');
+        $txn = $this->createMock(TransactionInterface::class);
+        $txn->method('getOrderId')->willReturn(5);
+        $found = $this->createMock(TransactionSearchResultInterface::class);
+        $found->method('getItems')->willReturn([$txn]);
+
+        $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
+        $this->transactionRepository->method('getList')->willReturn($found);
+        $boundResult = $this->createMock(OrderSearchResultInterface::class);
+        $boundResult->method('getItems')->willReturn([$bound]);
+        $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        $this->orderRepository->expects($this->once())->method('getList')->willReturn($boundResult);
+
+        // No usable metadata to fall through to, so skipping the binding
+        // leaves nothing to resolve — it must not settle a non-Paystack order.
+        $this->assertNull(
+            $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) []))
+        );
     }
 
     public function testLoneOrderOnQuoteIsUsedInAnyStateAndMethod(): void

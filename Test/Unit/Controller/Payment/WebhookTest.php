@@ -1486,15 +1486,21 @@ class WebhookTest extends TestCase
     }
 
     /**
-     * The signature-verified path writes a merchant-visible history comment on
-     * rejection. If that write itself throws — including a bare `\Error`, not just
-     * `\Exception` — it must not turn a clean permanent rejection into a 503: Paystack
-     * would retry a rejection retrying can never fix.
+     * A permanent rejection is acknowledged (200) only once its history line is
+     * durably recorded, unless the charge moved no real money. If the history
+     * write itself throws — including a bare `\Error`, not just `\Exception` —
+     * a real (live-domain) charge must keep retrying (503) so the merchant's
+     * only trace of the money is eventually written; a test-domain charge is
+     * not worth a retry over a lost history line (200).
      *
      * @dataProvider historyWriteFailureProvider
      */
-    public function testHistoryWriteFailureDoesNotTurnRejectionIntoRetry(\Throwable $thrown): void
-    {
+    public function testUnrecordedRejectionOfRealChargeRetriesButTestChargeIsAcknowledged(
+        \Throwable $thrown,
+        string $domain,
+        int $expectedCode,
+        string $expectedBody
+    ): void {
         $rawBody = json_encode([
             'event' => 'charge.success',
             'data' => [
@@ -1508,7 +1514,7 @@ class WebhookTest extends TestCase
         $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
 
         $verifyResponse = (object) [
-            'data' => (object) $this->settledVerifyData('ORDER_040', ['amount' => 499998]),
+            'data' => (object) $this->settledVerifyData('ORDER_040', ['amount' => 499998, 'domain' => $domain]),
         ];
         $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
         $this->configProvider->method('getPublicKey')->willReturn('pk_test');
@@ -1521,10 +1527,10 @@ class WebhookTest extends TestCase
 
         $this->rawResult->expects($this->atLeastOnce())
             ->method('setHttpResponseCode')
-            ->with(200);
+            ->with($expectedCode);
         $this->rawResult->expects($this->atLeastOnce())
             ->method('setContents')
-            ->with('rejected');
+            ->with($expectedBody);
 
         $this->controller->execute();
     }
@@ -1532,8 +1538,10 @@ class WebhookTest extends TestCase
     public static function historyWriteFailureProvider(): array
     {
         return [
-            'RuntimeException from save()' => [new \RuntimeException('deadlock')],
-            'TypeError-shaped failure' => [new \TypeError('unexpected type')],
+            'real charge, RuntimeException from save()' => [new \RuntimeException('deadlock'), 'live', 503, 'unverified'],
+            'real charge, TypeError-shaped failure' => [new \TypeError('unexpected type'), 'live', 503, 'unverified'],
+            'test-domain charge, RuntimeException from save()' => [new \RuntimeException('deadlock'), 'test', 200, 'rejected'],
+            'test-domain charge, TypeError-shaped failure' => [new \TypeError('unexpected type'), 'test', 200, 'rejected'],
         ];
     }
 
@@ -1732,6 +1740,59 @@ class WebhookTest extends TestCase
         $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('rejected');
 
         $this->controller->execute();
+    }
+
+    /**
+     * A canceled order whose ORDER_CLOSED history could not be saved is still
+     * ORDER_CLOSED, but the webhook only acknowledges it once recorded: a real
+     * charge retries (503), a test-domain one is acknowledged (200).
+     *
+     * @dataProvider closedOrderUnrecordedProvider
+     */
+    public function testCanceledOrderWhoseHistoryCannotBeSavedFollowsChargeRealness(
+        string $domain,
+        int $expectedCode,
+        string $expectedBody
+    ): void {
+        $this->request->method('getContent')->willReturn(json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'ORDER_049'],
+        ]));
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+        $this->paystackClient->method('isTestMode')->willReturn('test' === $domain);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('ORDER_049', ['domain' => $domain]),
+        ]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getId')->willReturn(1);
+        $order->method('getEntityId')->willReturn(1);
+        $order->method('getIncrementId')->willReturn('ORDER_049');
+        $order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $order->method('getStatusHistories')->willReturn([]);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+        $this->orderRepository->method('save')->willThrowException(new \RuntimeException('db down'));
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with($expectedCode);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with($expectedBody);
+
+        $this->controller->execute();
+    }
+
+    public static function closedOrderUnrecordedProvider(): array
+    {
+        return [
+            'live charge retries until recorded' => ['live', 503, 'unverified'],
+            'test-domain charge is acknowledged' => ['test', 200, 'rejected'],
+        ];
     }
 
     public function testDuplicateWebhookDeliveryWritesHistoryCommentOnlyOnce(): void

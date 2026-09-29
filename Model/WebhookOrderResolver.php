@@ -115,7 +115,9 @@ class WebhookOrderResolver
             ->create();
         foreach ($this->transactionRepository->getList($searchCriteria)->getItems() as $transaction) {
             $boundOrder = $this->findOrder($transaction->getOrderId());
-            if (null !== $boundOrder) {
+            // A binding on a non-Paystack order (e.g. another integration
+            // reused the reference) is not ours to settle against.
+            if (null !== $boundOrder && $this->transactionValidator->isPaystackOrder($boundOrder)) {
                 return $boundOrder;
             }
         }
@@ -144,6 +146,10 @@ class WebhookOrderResolver
                 'reference' => $reference,
                 'candidates' => count($matches),
             ]);
+        } else {
+            $this->logger->info('Paystack Webhook: no metadata.orderId, using quote lookup', [
+                'reference' => $reference,
+            ]);
         }
 
         // Step 4: quote fallback.
@@ -170,7 +176,29 @@ class WebhookOrderResolver
             'payable' => count($payable),
         ]);
 
-        return 1 === count($payable) ? $payable[0] : null;
+        if (1 === count($payable)) {
+            return $payable[0];
+        }
+
+        if (count($candidates) > 0) {
+            // No order will be named for this charge, so the webhook
+            // acknowledges it later with nothing on any order — this line is
+            // the only way to find which orders it could have been for.
+            $this->logger->error('Paystack Webhook: quote has orders but none can be chosen for this charge', [
+                'reference' => $reference,
+                'candidates' => array_map(
+                    function (OrderInterface $candidate): array {
+                        return [
+                            'increment_id' => $candidate->getIncrementId(),
+                            'state' => $candidate->getState(),
+                        ];
+                    },
+                    $candidates
+                ),
+            ]);
+        }
+
+        return null;
     }
 
     /**
