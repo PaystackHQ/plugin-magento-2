@@ -47,6 +47,23 @@ define(
                 },
 
                 /**
+                 * Core calls afterPlaceOrder() with no arguments, so capture the
+                 * placed order's entity id (the payment-information response) here.
+                 * The webhook uses it as metadata.orderId to pick the right order
+                 * when several share a quote (issue #69). Obsolete once inline
+                 * moves to server-side initialize.
+                 *
+                 * @override
+                 */
+                getPlaceOrderDeferredObject: function () {
+                    var self = this;
+                    this.paystackOrderId = null;
+                    return this._super().done(function (orderId) {
+                        self.paystackOrderId = /^[1-9]\d*$/.test(String(orderId)) ? String(orderId) : null;
+                    });
+                },
+
+                /**
                  * @override
                  */
                 afterPlaceOrder: function () {
@@ -98,6 +115,9 @@ define(
                     var streetAddress = [streetLines[0] || '', streetLines[1] || '']
                         .filter(Boolean).join(', ');
 
+                    var placedOrderId = this.paystackOrderId;
+                    this.paystackOrderId = null;
+
                     var _this = this;
                     _this.isPlaceOrderActionAllowed(false);
 
@@ -115,42 +135,46 @@ define(
                             return;
                         }
                         var popup = new PaystackPop();
+                        var metadata = {
+                            quoteId: quoteId,
+                            custom_fields: [
+                                {
+                                    display_name: "QuoteId",
+                                    variable_name: "quote id",
+                                    value: quoteId
+                                },
+                                {
+                                    display_name: "Address",
+                                    variable_name: "address",
+                                    value: streetAddress
+                                },
+                                {
+                                    display_name: "Postal Code",
+                                    variable_name: "postal_code",
+                                    value: paymentData.postcode
+                                },
+                                {
+                                    display_name: "City",
+                                    variable_name: "city",
+                                    value: paymentData.city + ", " + paymentData.countryId
+                                },
+                                {
+                                    display_name: "Plugin",
+                                    variable_name: "plugin",
+                                    value: "magento-2"
+                                }
+                            ]
+                        };
+                        if (placedOrderId) {
+                            metadata.orderId = placedOrderId;
+                        }
                         popup.newTransaction({
                             key: paystackConfiguration.public_key,
                             email: paymentData.email,
                             amount: Math.round(quote.totals().grand_total * 100),
                             phone: paymentData.telephone,
                             currency: checkoutConfig.totalsData.quote_currency_code,
-                            metadata: {
-                                quoteId: quoteId,
-                                custom_fields: [
-                                    {
-                                        display_name: "QuoteId",
-                                        variable_name: "quote id",
-                                        value: quoteId
-                                    },
-                                    {
-                                        display_name: "Address",
-                                        variable_name: "address",
-                                        value: streetAddress
-                                    },
-                                    {
-                                        display_name: "Postal Code",
-                                        variable_name: "postal_code",
-                                        value: paymentData.postcode
-                                    },
-                                    {
-                                        display_name: "City",
-                                        variable_name: "city",
-                                        value: paymentData.city + ", " + paymentData.countryId
-                                    },
-                                    {
-                                        display_name: "Plugin",
-                                        variable_name: "plugin",
-                                        value: "magento-2"
-                                    }
-                                ]
-                            },
+                            metadata: metadata,
                             onSuccess: function (response) {
                                 // Invariant: everything below this point runs AFTER Paystack has
                                 // taken the customer's money, so this handler fails closed — only
