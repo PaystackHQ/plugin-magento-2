@@ -201,9 +201,7 @@ class PaymentSettlement
         // resolved. registerCaptureNotification() flips state as a side
         // effect, so a re-verify of an already-advanced order must hit step
         // 3's no-op before this guard could mistake it for not-payable.
-        if (!in_array($freshOrder->getState(), [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT], true)
-            || $freshOrder->getBaseTotalDue() <= 0
-        ) {
+        if (!$this->transactionValidator->isPayable($freshOrder)) {
             $this->recordRejection(
                 $freshOrder,
                 $reference,

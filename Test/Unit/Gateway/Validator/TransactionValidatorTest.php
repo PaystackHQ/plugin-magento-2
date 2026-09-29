@@ -1171,4 +1171,31 @@ class TransactionValidatorTest extends TestCase
             );
         }
     }
+
+    /**
+     * @dataProvider isPayableProvider
+     */
+    public function testIsPayable(string $state, float $baseTotalDue, bool $expected): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getState')->willReturn($state);
+        $order->method('getBaseTotalDue')->willReturn($baseTotalDue);
+
+        $this->assertSame($expected, $this->validator->isPayable($order));
+    }
+
+    public static function isPayableProvider(): array
+    {
+        return [
+            'new, due' => [Order::STATE_NEW, 5000.00, true],
+            'pending_payment, due' => [Order::STATE_PENDING_PAYMENT, 5000.00, true],
+            'new, nothing due' => [Order::STATE_NEW, 0.0, false],
+            'new, negative due' => [Order::STATE_NEW, -1.0, false],
+            'processing' => [Order::STATE_PROCESSING, 5000.00, false],
+            'canceled' => [Order::STATE_CANCELED, 5000.00, false],
+            'closed' => [Order::STATE_CLOSED, 5000.00, false],
+            'complete' => [Order::STATE_COMPLETE, 5000.00, false],
+            'holded' => [Order::STATE_HOLDED, 5000.00, false],
+        ];
+    }
 }

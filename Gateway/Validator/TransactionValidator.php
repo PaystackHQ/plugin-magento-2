@@ -3,6 +3,7 @@
 namespace Pstk\Paystack\Gateway\Validator;
 
 use Magento\Sales\Api\Data\OrderInterface;
+use Magento\Sales\Model\Order;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Psr\Log\LoggerInterface;
 
@@ -166,6 +167,23 @@ class TransactionValidator
     {
         $payment = $order->getPayment();
         return $payment !== null && $payment->getMethod() === Paystack::CODE;
+    }
+
+    /**
+     * True when the order can still be registered as paid: in a pre-payment
+     * state (STATE_NEW/STATE_PENDING_PAYMENT) with a positive base amount due.
+     * The single definition of that, used by
+     * Model/PaymentSettlement::register()'s order-state guard and the webhook
+     * order resolver. Allow-list, not deny-list, so a state this list doesn't
+     * know about fails closed.
+     *
+     * @param OrderInterface $order
+     * @return bool
+     */
+    public function isPayable(OrderInterface $order): bool
+    {
+        return in_array($order->getState(), [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT], true)
+            && $order->getBaseTotalDue() > 0;
     }
 
     /**
