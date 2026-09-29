@@ -57,11 +57,13 @@
         <fillField selector="input[name='postcode']" userInput="90001" stepKey="fillPostcode"/>
         <fillField selector="input[name='telephone']" userInput="08000000000" stepKey="fillPhone"/>
 
-        <!-- 4. Select the first shipping method and continue to the payment step. -->
+        <!-- 4. Select Flat Rate and continue to the payment step. Filling the address
+             re-estimates shipping behind a loading mask and re-renders the method list,
+             so a raw click races it; the core action groups wait for both. -->
         <waitForElementVisible selector=".table-checkout-shipping-method input[type='radio']" time="60" stepKey="waitForShippingMethod"/>
-        <click selector=".table-checkout-shipping-method input[type='radio']" stepKey="selectShippingMethod"/>
-        <waitForElementVisible selector="button[data-role='opc-continue']" time="30" stepKey="waitForNext"/>
-        <click selector="button[data-role='opc-continue']" stepKey="goToPayment"/>
+        <waitForLoadingMaskToDisappear stepKey="waitForShippingEstimate"/>
+        <actionGroup ref="CheckoutSelectFlatRateShippingMethodActionGroup" stepKey="selectShippingMethod"/>
+        <actionGroup ref="StorefrontCheckoutClickNextButtonActionGroup" stepKey="goToPayment"/>
 
         <!-- 5. Payment step must render and offer the Paystack method (no infinite loader). -->
         <waitForElementVisible selector=".checkout-payment-method" time="60" stepKey="assertPaymentStepRendered"/>
