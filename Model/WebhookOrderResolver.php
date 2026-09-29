@@ -74,6 +74,14 @@ class WebhookOrderResolver
     /** @var LoggerInterface */
     private $logger;
 
+    /**
+     * @param OrderRepositoryInterface $orderRepository
+     * @param SearchCriteriaBuilder $searchCriteriaBuilder
+     * @param TransactionRepositoryInterface $transactionRepository
+     * @param OrderInterface $orderInterface
+     * @param TransactionValidator $transactionValidator
+     * @param LoggerInterface $logger
+     */
     public function __construct(
         OrderRepositoryInterface $orderRepository,
         SearchCriteriaBuilder $searchCriteriaBuilder,
@@ -138,10 +146,13 @@ class WebhookOrderResolver
             if (1 === count($matches) && $this->transactionValidator->isPaystackOrder($matches[0])) {
                 return $matches[0];
             }
-            $this->logger->info('Paystack Webhook: metadata orderId did not match a Paystack order on the quote, using quote lookup', [
-                'reference' => $reference,
-                'candidates' => count($matches),
-            ]);
+            $this->logger->info(
+                'Paystack Webhook: metadata orderId did not match a Paystack order on the quote, using quote lookup',
+                [
+                    'reference' => $reference,
+                    'candidates' => count($matches),
+                ]
+            );
         } else {
             $this->logger->info('Paystack Webhook: no metadata.orderId, using quote lookup', [
                 'reference' => $reference,
@@ -195,6 +206,8 @@ class WebhookOrderResolver
     }
 
     /**
+     * The order with this entity id, or null when there is none.
+     *
      * @param mixed $orderId
      * @return OrderInterface|null
      */
@@ -204,7 +217,9 @@ class WebhookOrderResolver
     }
 
     /**
-     * @param array<string, mixed> $filters field => value, all matched with 'eq'
+     * Orders matching every filter (field => value, each compared with 'eq').
+     *
+     * @param array $filters
      * @return OrderInterface[]
      */
     private function findOrders(array $filters): array
