@@ -472,7 +472,7 @@ class PaymentSettlementTest extends TestCase
             ->with(
                 $this->anything(),
                 $this->logicalAnd(
-                    $this->stringContains('Paystack: payment received but NOT applied — order is closed (order_closed): paid 10000 NGN, expected 10000 NGN, reference PSK_ref_123. Refund or reconcile this charge.'),
+                    $this->stringContains('Paystack: payment received after this order was closed (order_closed): paid 10000 NGN, expected 10000 NGN, reference PSK_ref_123. If this charge is not already reflected on the order, refund or reconcile it.'),
                     $this->stringContains('[paystack:PSK_ref_123:order_closed]')
                 )
             );
@@ -513,6 +513,60 @@ class PaymentSettlementTest extends TestCase
 
         $this->assertSame(TransactionValidator::REASON_ORDER_CLOSED, $result['reason']);
         $this->assertTrue($result['historyRecorded']);
+    }
+
+    /**
+     * A replay of an already-recorded ORDER_CLOSED must not page again: no
+     * critical, an info instead.
+     */
+    public function testOrderClosedReplayLogsInfoNotCritical(): void
+    {
+        $this->noExistingBindings();
+
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, Order::STATE_CANCELED);
+        $freshOrder = $this->orderRepository->get(1);
+
+        $existingHistory = $this->createMock(OrderStatusHistoryInterface::class);
+        $existingHistory->method('getComment')->willReturn('x [paystack:PSK_ref_123:order_closed]');
+        $freshOrder->method('getStatusHistories')->willReturn([$existingHistory]);
+
+        $this->logger->expects($this->never())->method('critical');
+        $this->logger->expects($this->once())->method('info');
+
+        $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+    }
+
+    /**
+     * A failed history write (save throws) is logged at critical with the
+     * allow-listed context, so an unrecorded real charge leaves a trace.
+     */
+    public function testFailedHistoryWriteLogsCriticalWithAllowListedContext(): void
+    {
+        $this->noExistingBindings();
+
+        $order = $this->makeOrder($this->makePaystackPayment(), 1, Order::STATE_CANCELED);
+        $this->orderRepository->method('save')->willThrowException(new \RuntimeException('db down'));
+
+        $this->logger->expects($this->once())
+            ->method('critical')
+            ->with(
+                $this->anything(),
+                $this->callback(function (array $context): bool {
+                    return array_keys($context) === ['reason', 'reference', 'order_increment_id']
+                        && $context['reason'] === TransactionValidator::REASON_ORDER_CLOSED
+                        && $context['reference'] === 'PSK_ref_123';
+                })
+            );
+
+        $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
     }
 
     public function testZeroBaseTotalDueIsRejectedAsOrderClosed(): void

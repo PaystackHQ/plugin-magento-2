@@ -330,15 +330,7 @@ class PaymentSettlement
         $paidCurrency = is_scalar($rawCurrency) ? substr((string) $rawCurrency, 0, 100) : 'unknown';
         $expectedSubunits = $this->transactionValidator->expectedSubunits($order);
 
-        // A closed order that took a real charge is the one rejection nobody
-        // will notice on their own — the money is with Paystack and no order
-        // holds it — so it is logged where an alert can see it.
         $isClosed = TransactionValidator::REASON_ORDER_CLOSED === $reason;
-        $this->logger->{$isClosed ? 'critical' : 'warning'}('Paystack: settlement registration rejected', [
-            'reason' => $reason,
-            'reference' => $reference,
-            'order_increment_id' => $order->getIncrementId(),
-        ]);
 
         // Two wordings, matching Webhook.php's pre-hoist recordHistory():
         // "rejected" for reasons a retry can never fix, "not applied yet
@@ -354,7 +346,7 @@ class PaymentSettlement
                 $reference,
                 $reason,
                 sprintf(
-                    'Paystack: payment received but NOT applied — order is closed (%s): paid %s %s, expected %s %s, reference %s. Refund or reconcile this charge.',
+                    'Paystack: payment received after this order was closed (%s): paid %s %s, expected %s %s, reference %s. If this charge is not already reflected on the order, refund or reconcile it.',
                     $reason,
                     $paidAmount,
                     $paidCurrency,
@@ -419,13 +411,21 @@ class PaymentSettlement
     }
 
     /**
-     * Appends the history comment and immediately persists it — used only by
-     * the rejection path, which returns before reaching register()'s own
-     * single save. Skips the save entirely when nothing was actually
-     * appended (a dedupe no-op or a failed write) — the same behavior the
-     * webhook's original recordHistory() had. A failed save must not turn an
-     * already-decided rejection into a retry that can never fix it — log and
-     * continue.
+     * Appends the history comment, immediately persists it, and logs the
+     * rejection — used only by the rejection path, which returns before
+     * reaching register()'s own single save. Skips the save entirely when
+     * nothing was actually appended (a dedupe no-op or a failed write). A
+     * failed save is logged and reported through the return value, never
+     * thrown: the caller's `historyRecorded` tells the webhook whether the
+     * rejection is durably on the order, and it keeps retrying a real-money
+     * permanent rejection until it is (see Webhook::resolveSettlement).
+     *
+     * The log level is chosen here, once the outcome is known. A failed write
+     * is always critical — a real charge acknowledged later would otherwise
+     * leave no trace. A closed order that took a real charge is critical the
+     * first time it is recorded (the money is with Paystack and no order holds
+     * it, so an alert must see it) and info on replays of an already-recorded
+     * one; every other reason is a warning.
      *
      * @param Order  $order
      * @param string $reference
@@ -436,17 +436,33 @@ class PaymentSettlement
      */
     private function writeHistory(Order $order, string $reference, string $reasonKey, string $comment): bool
     {
+        $isClosed = TransactionValidator::REASON_ORDER_CLOSED === $reasonKey;
+        $context = [
+            'reason' => $reasonKey,
+            'reference' => $reference,
+            'order_increment_id' => $order->getIncrementId(),
+        ];
+        $message = 'Paystack: settlement registration rejected';
+
         $appended = $this->appendHistoryComment($order, $reference, $reasonKey, $comment);
         if ($appended !== self::HISTORY_APPENDED) {
-            return $appended === self::HISTORY_PRESENT;
+            if ($appended === self::HISTORY_PRESENT) {
+                $this->logger->{$isClosed ? 'info' : 'warning'}($message, $context);
+                return true;
+            }
+            $this->logger->critical($message, $context);
+            return false;
         }
 
         try {
             $this->orderRepository->save($order);
-            return true;
         } catch (\Throwable $exc) {
             $this->logger->error('Paystack: failed to write order history', ['error' => $exc->getMessage()]);
+            $this->logger->critical($message, $context);
             return false;
         }
+
+        $this->logger->{$isClosed ? 'critical' : 'warning'}($message, $context);
+        return true;
     }
 }
