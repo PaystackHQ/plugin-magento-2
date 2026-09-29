@@ -80,7 +80,7 @@ Current tests (`Test/Mftf/Test/`): `PaystackPaymentConfigAvailableTest.xml` and 
 
 ### Unit tests
 
-There are 98 PHPUnit tests in `Test/Unit/`, and they are **not runnable from a fresh checkout** — the shipped `composer.json` has an empty `require` block and no `require-dev` on purpose. The test dependencies live in a CI-only manifest:
+There are 400+ PHPUnit tests in `Test/Unit/`, and they are **not runnable from a fresh checkout** — the shipped `composer.json` has an empty `require` block and no `require-dev` on purpose. The test dependencies live in a CI-only manifest:
 
 ```bash
 cd Test/Unit && composer install    # 184 packages, pinned by the committed lock
@@ -118,7 +118,8 @@ There are two integration types, selectable in admin config:
 
 **Webhook** (independent, server-to-server):
 - `/paystack/payment/webhook` — receives `charge.success` events from Paystack
-- Validates HMAC-SHA512 signature, verifies transaction, calls `Model/PaymentSettlement::register()`, dispatches `paystack_payment_verify_after`
+- Validates HMAC-SHA512 signature, verifies transaction, finds the order via `Model/WebhookOrderResolver` (increment id → reference already bound → `metadata.orderId`+`quoteId` → quote: lone order, else the single payable Paystack order), calls `Model/PaymentSettlement::register()`, dispatches `paystack_payment_verify_after`
+- A decided rejection of a real charge is acknowledged (200) only once its order-history comment is saved (`historyRecorded`); closed orders get `order_closed` (200 once recorded), held/payment-review orders `order_not_payable` (retried)
 - CSRF validation skipped via `Plugin/CsrfValidatorSkip.php`
 
 `Model/PaymentSettlement::register()` is the single class that binds the Paystack reference to an order, registers the captured payment (`total_paid`, invoice, transaction row via `registerCaptureNotification()`), and records rejection history — for all three verification paths above, before any of them dispatches `paystack_payment_verify_after`. Each consumer dispatches the settled order instance `register()` returns, not its own stale one. `ObserverAfterPaymentVerify.php` no longer advances order state at all: it is email-only now, gated on `!$order->getEmailSent()` (register() already saved the order by the time the observer runs). Initial order confirmation email is suppressed by `ObserverBeforeSalesOrderPlace` until payment is verified. Both observers must be registered in **every** DI area a checkout path can place/verify an order from — `Model/PaymentManagement.php` (the inline flow's default integration type) runs in `webapi_rest`, not `frontend`, so both `etc/frontend/events.xml` and `etc/webapi_rest/events.xml` register both events; registering only one observer in `webapi_rest` without the other caused either a missing post-payment confirmation (inline orders stuck unadvanced) or a duplicate confirmation email (placement email unsuppressed, post-payment email also sent).
@@ -129,6 +130,7 @@ There are two integration types, selectable in admin config:
 |---|---|
 | `Gateway/PaystackApiClient.php` | All Paystack API calls: initialize transaction, verify, validate webhook signature |
 | `Model/PaymentManagement.php` | REST API endpoint for inline payment verification |
+| `Model/WebhookOrderResolver.php` | Finds the order a verified webhook charge is for, including inline retries where several orders share a quote (#69) |
 | `Model/PaymentSettlement.php` | Binds the Paystack reference to an order, registers the captured payment, and records rejection/overpayment history — shared by all three verification paths |
 | `Model/Ui/ConfigProvider.php` | Injects public key, integration type, and URLs into checkout JS config |
 | `Controller/Payment/AbstractPaystackStandard.php` | Base controller with shared utilities (quote loading, message handling) |
@@ -149,4 +151,4 @@ All settings live under `payment/pstk_paystack/` in Magento config. Secret keys 
 
 ### Quote ID as Transaction Anchor
 
-For inline payments, Paystack generates the transaction reference on the client side. The `quoteId` is passed as metadata in the Paystack transaction so the webhook/verification can locate the correct order when no Magento-generated reference is available.
+For inline payments, Paystack generates the transaction reference on the client side. The `quoteId` — and, since #69, the placed order's entity id as `orderId` (captured in the renderer's `getPlaceOrderDeferredObject()` override) — are passed as metadata in the Paystack transaction so the webhook/verification can locate the correct order when no Magento-generated reference is available. Closing the popup runs `Recreate`, which cancels the order and reuses the same quote, so one quote can carry several orders. Both ids are browser-supplied; `register()`'s checks are the actual bound. A server-side initialize redesign is planned; the client-side `orderId` becomes obsolete then.
