@@ -5,7 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 The entries below cover every release since the last tag, **v3.0.10**.
 
-## [Unreleased]
+## [3.1.1] - 2026-09-29
+
+Inline (popup) payments that the customer retried after closing the Paystack
+window now confirm through the webhook, and charges for orders that can no
+longer take them are recorded and acknowledged instead of retried for days.
 
 ### Fixed
 - **Inline payments retried on the same cart now confirm via the webhook
@@ -36,6 +40,14 @@ The entries below cover every release since the last tag, **v3.0.10**.
 - The inline REST verify endpoint and the Redirect callback report
   `order_closed` (terminal, same customer message as `order_not_payable`)
   for canceled/closed/complete or fully-paid orders.
+
+### Maintenance
+- `StorefrontPaystackCheckoutRendersTest` (MFTF) no longer races Magento's
+  shipping-estimate loading mask; it uses the core
+  `CheckoutSelectFlatRateShippingMethodActionGroup` and
+  `StorefrontCheckoutClickNextButtonActionGroup`.
+- `.env.sample`, a leftover Docker template, is no longer included in the
+  Marketplace package.
 
 ### Known limitations
 - Transactions without `metadata.orderId` (started before this release, or
