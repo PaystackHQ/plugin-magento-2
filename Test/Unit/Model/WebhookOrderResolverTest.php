@@ -314,6 +314,32 @@ class WebhookOrderResolverTest extends TestCase
         );
     }
 
+    public function testOrphanBoundTransactionFallsThroughToQuoteLookup(): void
+    {
+        // A sales_payment_transaction names an order that no longer loads:
+        // step 2 must not return null or throw, it continues to the quote path.
+        $txn = $this->createMock(TransactionInterface::class);
+        $txn->method('getOrderId')->willReturn(404);
+        $found = $this->createMock(TransactionSearchResultInterface::class);
+        $found->method('getItems')->willReturn([$txn]);
+        $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
+        $this->transactionRepository->method('getList')->willReturn($found);
+
+        $lone = $this->makeOrder(3, Order::STATE_NEW);
+        $empty = $this->createMock(OrderSearchResultInterface::class);
+        $empty->method('getItems')->willReturn([]);
+        $loneResult = $this->createMock(OrderSearchResultInterface::class);
+        $loneResult->method('getItems')->willReturn([$lone]);
+        $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        $this->orderRepository->expects($this->exactly(2))->method('getList')
+            ->willReturnOnConsecutiveCalls($empty, $loneResult);
+
+        $this->assertSame(
+            $lone,
+            $this->resolverWithTransactions()->resolve('PSK_1', $this->withMetadata((object) ['quoteId' => '9']))
+        );
+    }
+
     public function testLoneOrderOnQuoteIsUsedInAnyStateAndMethod(): void
     {
         $lone = $this->makeOrder(3, Order::STATE_CANCELED, 0.0, 'checkmo');

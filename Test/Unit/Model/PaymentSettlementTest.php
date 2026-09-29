@@ -724,6 +724,43 @@ class PaymentSettlementTest extends TestCase
         $this->assertSame($freshOrder, $result['order']);
     }
 
+    public function testReferenceBoundElsewhereWhoseHistoryCannotBeSavedIsNotRecorded(): void
+    {
+        $this->transactionRepository->method('getList')->willReturn(
+            $this->searchResult([$this->transactionItem(999)])
+        );
+        $order = $this->makeOrder($this->makePaystackPayment(), 1);
+        $this->orderRepository->method('save')->willThrowException(new \RuntimeException('db down'));
+
+        $result = $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+
+        $this->assertSame(TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE, $result['reason']);
+        $this->assertFalse($result['historyRecorded']);
+    }
+
+    public function testRegistrationFailedWhoseHistoryCannotBeSavedIsNotRecorded(): void
+    {
+        $this->noExistingBindings();
+        $payment = $this->makePaystackPayment();
+        $payment->method('registerCaptureNotification')
+            ->willThrowException(new \RuntimeException('invoice creation failed'));
+        $order = $this->makeOrder($payment, 1, Order::STATE_NEW, 100.00);
+        $this->orderRepository->method('save')->willThrowException(new \RuntimeException('db down'));
+
+        $result = $this->paymentSettlement->register(
+            (object) ['data' => $this->makeVerifyData()],
+            $order,
+            true
+        );
+
+        $this->assertSame(TransactionValidator::REASON_REGISTRATION_FAILED, $result['reason']);
+        $this->assertFalse($result['historyRecorded']);
+    }
+
     /**
      * A retry of an already-recorded rejection must not append a duplicate
      * comment, and — since nothing new was written — must not save() either.

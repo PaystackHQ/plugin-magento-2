@@ -1239,4 +1239,27 @@ class TransactionValidatorTest extends TestCase
             'payment_review, due' => [Order::STATE_PAYMENT_REVIEW, 5000.00, false],
         ];
     }
+
+    /**
+     * @dataProvider chargeIsRealProvider
+     */
+    public function testChargeIsReal($data, bool $expected): void
+    {
+        $this->assertSame($expected, $this->validator->chargeIsReal($data));
+    }
+
+    public static function chargeIsRealProvider(): array
+    {
+        return [
+            'success, live' => [(object) ['status' => 'success', 'domain' => 'live'], true],
+            'success, domain missing' => [(object) ['status' => 'success'], true],
+            'success, domain null' => [(object) ['status' => 'success', 'domain' => null], true],
+            'success, test domain' => [(object) ['status' => 'success', 'domain' => 'test'], false],
+            'failed, live' => [(object) ['status' => 'failed', 'domain' => 'live'], false],
+            'abandoned' => [(object) ['status' => 'abandoned', 'domain' => 'live'], false],
+            'status missing' => [(object) ['domain' => 'live'], false],
+            'not an object' => ['success', false],
+            'null' => [null, false],
+        ];
+    }
 }
