@@ -5,6 +5,98 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 The entries below cover every release since the last tag, **v3.0.10**.
 
+## [Unreleased]
+
+Every payment-verification path now confirms, from Paystack's verify response,
+that the transaction actually settles the order before the order is advanced
+to Processing: transaction status must be `success`, the paid amount must
+cover the order total (in subunits), the currency must match the order's
+currency, the order must have been placed with the Paystack payment method,
+and the response's live/test `domain` must match the store's configured mode.
+Overpaying is accepted — normal when the customer bears Paystack's transaction
+fee — and recorded; where a verify response also reports the amount actually
+*requested* at initialize, that figure is checked against a tight window
+around the order's expected total (catching a wrong-exponent client bug
+regardless of any fee added on top), and the paid amount only has to cover
+what was requested.
+
+### Security
+- **A transaction that did not pay for an order can no longer advance it.**
+  Previously, the inline (popup) REST verification endpoint never checked the
+  verify response's status, and no path compared the paid amount or currency to
+  the order — a smaller or differently-denominated payment could mark an order
+  as Processing. All three paths (redirect callback, inline REST endpoint,
+  webhook) now share one settlement check (`Gateway/Validator/TransactionValidator`).
+- **`/paystack/payment/recreate` no longer cancels a paid order.** The route
+  only acts on orders still in the `new` or `pending_payment` state, and only
+  when the order was placed with the Paystack payment method; a
+  processing/complete order, or one paid via another method, can no longer
+  have its quote restored by an anonymous GET. (Side effect: an
+  already-cancelled order no longer re-triggers a quote restore — the first
+  call has already restored the quote.)
+- **The inline verification endpoint no longer leaks internal detail.** The
+  success response now returns only the transaction status and reference
+  (previously the full transaction object, including card BIN/last4, customer
+  email/phone, and IP, went to the browser), and error responses return a fixed
+  message instead of raw gateway/cURL text.
+- **The webhook's HMAC signature check no longer fails open on an
+  unconfigured secret key.** An empty Paystack secret key (a store never
+  configured, or misconfigured for the active mode) made the signature check
+  trivially satisfiable by anyone, since `hash_hmac()` against an empty key is
+  computable without knowing any secret. The check now rejects outright when
+  no secret key is configured.
+- **Both payment-verification observers are now also registered in the
+  `webapi_rest` area, not only `frontend`.** Previously
+  `etc/webapi_rest/events.xml` did not exist at all: the
+  `paystack_payment_verify_after` event (advances the order past pending and
+  sends the post-payment confirmation email) and `sales_order_place_before`
+  (suppresses the initial placement email until payment verifies) were only
+  wired in `etc/frontend/events.xml`. The inline flow's own REST endpoint
+  (`Model/PaymentManagement.php`) runs in the `webapi_rest` area, so neither
+  observer fired there — the module's default integration type sent the
+  placement confirmation email (that was never suppressed) but never
+  advanced the order or sent the post-payment confirmation. Registering only
+  `paystack_payment_verify_after` without also registering
+  `ObserverBeforeSalesOrderPlace` would have caused a duplicate email (the
+  unsuppressed placement email, plus a new post-payment one); both are
+  registered together.
+
+### Fixed
+- **Webhook responses now distinguish transient from permanent failures.**
+  Transient conditions (transaction still settling via bank transfer/USSD,
+  Paystack API errors, order not yet found) return HTTP 503 so Paystack retries
+  within its ~72h window — previously every outcome returned HTTP 200, which
+  silently cancelled retries and could permanently strand a legitimate payment's
+  confirmation. Genuine rejections (failed status, amount/currency mismatch)
+  return HTTP 200 so Paystack does not pointlessly retry.
+- **Rejected and surplus payments are now visible to the merchant.** When the
+  (signature-verified) webhook rejects a settlement mismatch, or accepts an
+  overpayment, it writes an order status-history comment with the paid vs
+  expected amount and reference.
+- **A malformed inline verification reference no longer causes a 500** on the
+  anonymous REST route.
+- **After a payment fails post-charge on the inline flow, the Place Order
+  button is no longer re-enabled** — re-enabling it invited a double charge
+  while money was already moving.
+- **`Controller/Payment/Recreate.php` no longer calls the deprecated
+  `Order::save()`.** Order cancellation is now persisted through
+  `OrderRepositoryInterface::save()`.
+
+### Known limitations, not addressed by this change
+- The webhook's fallback lookup of an order by `quote_id`
+  (`Controller/Payment/Webhook.php`, used when the popup flow's
+  Paystack-generated reference has no matching order) still resolves an
+  ambiguous match via `getTotalCount() == 1`/`getFirstItem()` rather than
+  disambiguating by amount. This is a separate, still-open issue (tracked as
+  D9/R2.8) — not fixed by this settlement-gate work, which only changed the
+  webhook's *retry* semantics (transient vs. permanent), not its order-lookup
+  logic.
+
+### Upgrade note
+If a store's checkout was relying (unknowingly) on under- or mis-paid
+transactions being accepted, those orders now stay pending and the webhook
+records the mismatch in the order history. No configuration change is needed.
+
 ## [3.0.11] - 2026-08-17
 
 Corrects the transaction payload sent to Paystack: the amount is now always an

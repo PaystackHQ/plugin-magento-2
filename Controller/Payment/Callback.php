@@ -3,24 +3,26 @@
 /**
  * Paystack Magento2 Module using \Magento\Payment\Model\Method\AbstractMethod
  * Copyright (C) 2019 Paystack.com
- * 
+ *
  * This file is part of Pstk/Paystack.
- * 
+ *
  * Pstk/Paystack is free software => you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http =>//www.gnu.org/licenses/>.
  */
 
 namespace Pstk\Paystack\Controller\Payment;
+
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 
 class Callback extends AbstractPaystackStandard {
 
@@ -40,6 +42,10 @@ class Callback extends AbstractPaystackStandard {
 
         // A rejection must not tell the customer to try again once money may have
         // moved. This is the one generic surface used by every failure branch.
+        //
+        // Deliberately not TransactionValidator::customerMessage(): the wording
+        // here (e.g. "before trying again" vs "Please try again."/"do not pay
+        // again") is a separate copy pinned by CallbackTest.
         $unconfirmed = "We could not confirm your payment. If you believe you were "
             . "charged, please contact support before trying again.";
 
@@ -68,7 +74,13 @@ class Callback extends AbstractPaystackStandard {
                 // transfer and USSD sit there at callback time and settle minutes
                 // later via the webhook. Telling that customer to try again invites a
                 // second payment for a charge already on its way.
-                $inFlight = in_array($status, ["pending", "ongoing", "queued"], true);
+                //
+                // Deliberately not TransactionValidator::customerMessage(): the
+                // wording below ("once it completes" / "before trying again") is a
+                // separate copy from customerMessage()'s IN_FLIGHT/NOT_SUCCESSFUL
+                // text ("once it is confirmed" / "Please try again."), pinned by
+                // CallbackTest.
+                $inFlight = in_array($status, TransactionValidator::STATUSES_IN_FLIGHT, true);
 
                 return $this->redirectToFinal(
                     false,
@@ -82,12 +94,47 @@ class Callback extends AbstractPaystackStandard {
 
             $reference = explode('_', $transactionDetails->data->reference, 2);
             $reference = ($reference[0])?: 0;
-            
+
             $order = $this->orderInterface->loadByIncrementId($reference);
-            
+
             if ($order && $reference === $order->getIncrementId()) {
+                // The status gate above only confirms `success`; it says nothing about
+                // whether the amount/currency paid actually settles this order, or
+                // whether the order was even placed with Paystack. That double coverage
+                // is deliberate — this is the one check that closes those gaps, and it
+                // must run before $dispatched is set so a mismatch never reaches the
+                // "payment received" warning branch below.
+                $failureReason = $this->transactionValidator->settlementFailureReason(
+                    $transactionDetails,
+                    $order,
+                    $this->paystackClient->isTestMode()
+                );
+
+                if (null !== $failureReason) {
+                    $this->logger->warning(
+                        'Paystack callback rejected: settlement check failed',
+                        [
+                            "reason" => $failureReason,
+                            "reference" => $requestedReference,
+                            "order_increment_id" => $order->getIncrementId(),
+                        ]
+                    );
+
+                    // The old hardcoded copy here ("was not completed... contact
+                    // support before trying again") was factually wrong for
+                    // REASON_AMOUNT_MISMATCH: the payment did complete, it just did
+                    // not cover the order, so telling the customer nothing was
+                    // charged was false and the "try again" invitation risked a
+                    // second charge. customerMessage() is the single owner of this
+                    // copy now, shared with PaymentManagement's inline path.
+                    return $this->redirectToFinal(
+                        false,
+                        $this->transactionValidator->customerMessage($failureReason)
+                    );
+                }
+
                 // dispatch the `payment_verify_after` event to update the order status
-                
+
                 $dispatched = true;
 
                 $this->eventManager->dispatch('paystack_payment_verify_after', [

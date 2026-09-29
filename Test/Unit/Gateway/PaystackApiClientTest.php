@@ -111,6 +111,50 @@ class PaystackApiClientTest extends TestCase
         $this->assertFalse($this->client->isTestMode());
     }
 
+    /**
+     * An unconfigured/empty secret key makes hash_hmac(..., '') computable by
+     * anyone, so it must never be allowed to trivially satisfy the signature
+     * check — even a signature genuinely computed against the empty key must
+     * be rejected.
+     */
+    public function testValidateWebhookSignatureEmptySecretKeyFails(): void
+    {
+        $this->paymentMethod->method('getConfigData')
+            ->willReturnCallback(function ($field) {
+                if ($field === 'test_mode') return true;
+                if ($field === 'test_secret_key') return '';
+                return null;
+            });
+
+        $rawBody = '{"event":"charge.success"}';
+        $signatureComputedAgainstEmptyKey = hash_hmac('sha512', $rawBody, '');
+
+        $this->assertFalse($this->client->validateWebhookSignature($rawBody, $signatureComputedAgainstEmptyKey));
+    }
+
+    /**
+     * The real unconfigured-config shape: `getConfigData()` returns `null` for
+     * an unset field (the `?? null` default this test's callback simulates via
+     * falling through to `return null`), not an already-empty string —
+     * `getSecretKey()`'s `(string)` cast turns that into `''`, and this
+     * confirms the cast-then-guard chain rejects it end to end, not just the
+     * already-empty-string shortcut above.
+     */
+    public function testValidateWebhookSignatureNullSecretKeyFails(): void
+    {
+        $this->paymentMethod->method('getConfigData')
+            ->willReturnCallback(function ($field) {
+                if ($field === 'test_mode') return true;
+                if ($field === 'test_secret_key') return null;
+                return null;
+            });
+
+        $rawBody = '{"event":"charge.success"}';
+        $signatureComputedAgainstEmptyKey = hash_hmac('sha512', $rawBody, '');
+
+        $this->assertFalse($this->client->validateWebhookSignature($rawBody, $signatureComputedAgainstEmptyKey));
+    }
+
     public function testValidateWebhookSignatureTampered(): void
     {
         $this->paymentMethod->method('getConfigData')

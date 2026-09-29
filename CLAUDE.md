@@ -121,7 +121,7 @@ There are two integration types, selectable in admin config:
 - Validates HMAC-SHA512 signature, verifies transaction, dispatches `paystack_payment_verify_after`
 - CSRF validation skipped via `Plugin/CsrfValidatorSkip.php`
 
-The custom event `paystack_payment_verify_after` is the single point where order status is updated to Processing and confirmation email is sent (`Observer/ObserverAfterPaymentVerify.php`). Initial order confirmation email is suppressed by `ObserverBeforeSalesOrderPlace` until payment is verified.
+The custom event `paystack_payment_verify_after` is the single point where order status is updated to Processing and confirmation email is sent (`Observer/ObserverAfterPaymentVerify.php`). Initial order confirmation email is suppressed by `ObserverBeforeSalesOrderPlace` until payment is verified. Both observers must be registered in **every** DI area a checkout path can place/verify an order from — `Model/PaymentManagement.php` (the inline flow's default integration type) runs in `webapi_rest`, not `frontend`, so both `etc/frontend/events.xml` and `etc/webapi_rest/events.xml` register both events; registering only one observer in `webapi_rest` without the other caused either a missing post-payment confirmation (inline orders stuck unadvanced) or a duplicate confirmation email (placement email unsuppressed, post-payment email also sent).
 
 ### Key Classes
 

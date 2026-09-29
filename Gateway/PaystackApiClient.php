@@ -87,6 +87,11 @@ class PaystackApiClient
      */
     public function validateWebhookSignature(string $rawBody, string $signature): bool
     {
+        if ($this->getSecretKey() === '') {
+            // An unconfigured/empty secret key makes hash_hmac(..., '') computable
+            // by anyone — never let that trivially satisfy the signature check.
+            return false;
+        }
         $computed = hash_hmac('sha512', $rawBody, $this->getSecretKey());
         return hash_equals($computed, $signature);
     }
