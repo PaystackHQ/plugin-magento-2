@@ -6,7 +6,7 @@
 
 Paystack payment gateway extension for Magento 2
 
-**Version:** 3.0.11 (Paystack v2 Inline.js API)
+**Version:** 3.1.0 (Paystack v2 Inline.js API)
 
 ## Requirements
 
