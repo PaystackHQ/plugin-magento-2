@@ -9,6 +9,7 @@ use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Gateway\Exception\ApiException;
 use Pstk\Paystack\Model\Payment\Paystack;
+use Pstk\Paystack\Model\PaymentSettlement;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Request\Http as HttpRequest;
@@ -109,7 +110,8 @@ class SetupTest extends TestCase
             $request,
             $this->createMock(LoggerInterface::class),
             $this->paystackClient,
-            $this->transactionValidator
+            $this->transactionValidator,
+            $this->createMock(PaymentSettlement::class)
         );
     }
 

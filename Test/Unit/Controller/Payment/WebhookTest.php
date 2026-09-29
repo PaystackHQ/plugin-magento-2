@@ -9,7 +9,10 @@ use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
 use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Model\Payment\Paystack;
+use Pstk\Paystack\Model\PaymentSettlement;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Framework\Api\SearchCriteriaInterface;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Request\Http as HttpRequest;
 use Magento\Framework\Controller\ResultFactory;
@@ -18,8 +21,11 @@ use Magento\Framework\Event\Manager as EventManager;
 use Magento\Framework\View\Result\PageFactory;
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Magento\Sales\Api\Data\OrderInterface;
+use Magento\Sales\Api\Data\TransactionSearchResultInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
+use Magento\Sales\Api\TransactionRepositoryInterface;
+use Magento\Sales\Model\Order;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -52,6 +58,9 @@ class WebhookTest extends TestCase
 
     /** @var MockObject|LoggerInterface */
     private $logger;
+
+    /** @var MockObject|TransactionRepositoryInterface */
+    private $transactionRepository;
 
     protected function setUp(): void
     {
@@ -94,6 +103,26 @@ class WebhookTest extends TestCase
         $messageManager = $this->createMock(\Magento\Framework\Message\ManagerInterface::class);
         $storeManager = $this->createMock(StoreManagerInterface::class);
 
+        $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
+        // Unconfigured: PaymentSettlement's cross-order binding check finds no
+        // existing transaction for this reference by default — tests that
+        // need a bound-elsewhere/idempotent case reconfigure this per-test.
+        $noExistingBindings = $this->createMock(TransactionSearchResultInterface::class);
+        $noExistingBindings->method('getItems')->willReturn([]);
+        $this->transactionRepository->method('getList')->willReturn($noExistingBindings);
+
+        $searchCriteriaBuilder = $this->createMock(SearchCriteriaBuilder::class);
+        $searchCriteriaBuilder->method('addFilter')->willReturnSelf();
+        $searchCriteriaBuilder->method('create')->willReturn($this->createMock(SearchCriteriaInterface::class));
+
+        $paymentSettlement = new PaymentSettlement(
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $this->orderRepository,
+            $this->transactionRepository,
+            $searchCriteriaBuilder,
+            $this->createMock(LoggerInterface::class)
+        );
+
         $this->controller = new Webhook(
             $context,
             $pageFactory,
@@ -108,7 +137,8 @@ class WebhookTest extends TestCase
             $this->request,
             $this->logger,
             $this->paystackClient,
-            new TransactionValidator($this->createMock(LoggerInterface::class))
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $paymentSettlement
         );
     }
 
@@ -130,8 +160,13 @@ class WebhookTest extends TestCase
     {
         $order = $this->createMock(\Magento\Sales\Model\Order::class);
         $order->method('getId')->willReturn(1);
+        $order->method('getEntityId')->willReturn(1);
         $order->method('getIncrementId')->willReturn($incrementId);
         $order->method('getStatus')->willReturn('pending');
+        // PaymentSettlement::register()'s order-state guard: payable by
+        // default so the settled-order tests reach registration.
+        $order->method('getState')->willReturn(Order::STATE_NEW);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
 
         $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
         $payment->method('getMethod')->willReturn(Paystack::CODE);
@@ -194,6 +229,72 @@ class WebhookTest extends TestCase
         $this->controller->execute();
     }
 
+    /**
+     * `createSettledOrder()` here — and every other test's use of it — never
+     * wires `orderRepository->get()` to anything, so `PaymentSettlement`'s
+     * fresh re-fetch falls back to the SAME `$order` instance `loadByIncrementId()`
+     * returned: no existing test in this file can tell "dispatches
+     * `PaymentSettlement::register()`'s returned order" apart from "dispatches
+     * its own stale `$order` variable". This test wires a distinct fresh
+     * instance so a regression back to dispatching the pre-registration order
+     * (missing the `total_paid`/invoice/transaction row registration just
+     * added) is caught. Also: a mismatched `->with(...)` argument matcher
+     * would throw from inside `dispatch()`, which this controller's own broad
+     * `catch (\Throwable $exc)` would silently swallow — so the dispatched
+     * argument is captured and asserted after `execute()` returns instead.
+     */
+    public function testDispatchesTheRefetchedOrderRegisterReturnedNotTheStaleLookup(): void
+    {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'ORDER_099',
+            ],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->with('X-Paystack-Signature')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_099'),
+        ];
+        $this->paystackClient->method('verifyTransaction')
+            ->with('ORDER_099')
+            ->willReturn($verifyResponse);
+
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test_123');
+
+        $staleOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $staleOrder->method('getId')->willReturn(1);
+        $staleOrder->method('getEntityId')->willReturn(1);
+        $staleOrder->method('getIncrementId')->willReturn('ORDER_099');
+
+        $freshOrder = $this->createSettledOrder('ORDER_099');
+        $this->orderRepository->method('get')->with(1)->willReturn($freshOrder);
+
+        $this->orderInterface->method('loadByIncrementId')
+            ->with('ORDER_099')
+            ->willReturn($staleOrder);
+
+        $dispatchedOrder = null;
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(function (string $eventName, array $data) use (&$dispatchedOrder): void {
+                $dispatchedOrder = $data['paystack_order'] ?? null;
+            });
+
+        $this->controller->execute();
+
+        $this->assertSame(
+            $freshOrder,
+            $dispatchedOrder,
+            'Must dispatch the order PaymentSettlement::register() actually settled and saved, not the stale pre-registration lookup.'
+        );
+        $this->assertNotSame($staleOrder, $dispatchedOrder);
+    }
+
     public function testChargeSuccessWithValidOrder(): void
     {
         $rawBody = json_encode([
@@ -228,7 +329,11 @@ class WebhookTest extends TestCase
             ->with('ORDER_001')
             ->willReturn($order);
 
-        $this->orderRepository->expects($this->never())->method('save');
+        // Registration itself now persists the order (total_paid, invoice,
+        // transaction row) — the D8 half this reconciliation adds. Previously
+        // nothing here ever saved because settlementFailureReason() was only
+        // ever a read.
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
 
         $this->eventManager->expects($this->once())
             ->method('dispatch')
@@ -1411,6 +1516,71 @@ class WebhookTest extends TestCase
             // recent (not-yet-hydrated relation), but not indefinitely.
             'malformed, recent' => [['paid_at' => $recent, 'amount' => null], Paystack::CODE, 503],
             'malformed, stale' => [['paid_at' => $stale, 'amount' => null], Paystack::CODE, 200],
+        ];
+    }
+
+    /**
+     * Fix D: REASON_ORDER_NOT_PAYABLE moved from PERMANENT_FOR_WEBHOOK into
+     * NEVER_RECENCY_BOUNDED — a bank-transfer/USSD charge genuinely `pending`
+     * at callback time can settle minutes later via this webhook; if the
+     * customer used `/paystack/payment/recreate` meanwhile, the order is now
+     * `canceled`, and a late but genuine `charge.success` must keep retrying
+     * (503) indefinitely, not be permanently dropped (200) — regardless of
+     * transaction age, unlike MALFORMED above.
+     *
+     * @dataProvider orderNotPayableAgeProvider
+     */
+    public function testOrderNotPayableStaysTransientRegardlessOfAge(string $paidAt): void
+    {
+        $rawBody = json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'ORDER_047'],
+        ]);
+
+        $this->request->method('getContent')->willReturn($rawBody);
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('ORDER_047', ['paid_at' => $paidAt]),
+        ];
+        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->configProvider->method('getPublicKey')->willReturn('pk_test');
+
+        // Canceled: not in STATE_NEW/STATE_PENDING_PAYMENT, so
+        // PaymentSettlement's order-state guard rejects with
+        // REASON_ORDER_NOT_PAYABLE.
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getId')->willReturn(1);
+        $order->method('getEntityId')->willReturn(1);
+        $order->method('getIncrementId')->willReturn('ORDER_047');
+        $order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $order->method('getStatusHistories')->willReturn([]);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setHttpResponseCode')
+            ->with(503);
+        $this->rawResult->expects($this->atLeastOnce())
+            ->method('setContents')
+            ->with('unverified');
+
+        $this->controller->execute();
+    }
+
+    public static function orderNotPayableAgeProvider(): array
+    {
+        return [
+            'recent' => [date('c', time() - 60)],
+            'stale' => [date('c', time() - 7200)],
         ];
     }
 

@@ -8,9 +8,16 @@ use Pstk\Paystack\Model\PaymentManagement;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
 use Pstk\Paystack\Gateway\Validator\TransactionValidator;
+use Pstk\Paystack\Model\PaymentSettlement;
 use Pstk\Paystack\Model\Payment\Paystack;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Framework\Api\SearchCriteriaInterface;
 use Magento\Framework\Event\Manager as EventManager;
 use Magento\Sales\Api\Data\OrderInterface;
+use Magento\Sales\Api\Data\TransactionSearchResultInterface;
+use Magento\Sales\Api\OrderRepositoryInterface;
+use Magento\Sales\Api\TransactionRepositoryInterface;
+use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Payment as OrderPayment;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Psr\Log\LoggerInterface;
@@ -35,6 +42,12 @@ class PaymentManagementTest extends TestCase
     /** @var MockObject|LoggerInterface */
     private $logger;
 
+    /** @var MockObject|OrderRepositoryInterface */
+    private $orderRepository;
+
+    /** @var MockObject|TransactionRepositoryInterface */
+    private $transactionRepository;
+
     protected function setUp(): void
     {
         $this->paystackClient = $this->createMock(PaystackApiClient::class);
@@ -43,13 +56,35 @@ class PaymentManagementTest extends TestCase
         $this->checkoutSession = $this->createMock(CheckoutSession::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
+        $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        // Unconfigured: PaymentSettlement's fresh-refetch falls back to the
+        // caller's own $order instance (a real Order mock, so `instanceof
+        // Order` holds) whenever this returns something that isn't one.
+        $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
+        $noExistingBindings = $this->createMock(TransactionSearchResultInterface::class);
+        $noExistingBindings->method('getItems')->willReturn([]);
+        $this->transactionRepository->method('getList')->willReturn($noExistingBindings);
+
+        $searchCriteriaBuilder = $this->createMock(SearchCriteriaBuilder::class);
+        $searchCriteriaBuilder->method('addFilter')->willReturnSelf();
+        $searchCriteriaBuilder->method('create')->willReturn($this->createMock(SearchCriteriaInterface::class));
+
+        $paymentSettlement = new PaymentSettlement(
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $this->orderRepository,
+            $this->transactionRepository,
+            $searchCriteriaBuilder,
+            $this->createMock(LoggerInterface::class)
+        );
+
         $this->paymentManagement = new PaymentManagement(
             $this->paystackClient,
             $this->eventManager,
             $this->orderInterface,
             $this->checkoutSession,
             $this->logger,
-            new TransactionValidator($this->createMock(LoggerInterface::class))
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $paymentSettlement
         );
     }
 
@@ -78,6 +113,11 @@ class PaymentManagementTest extends TestCase
         $order->method('getGrandTotal')->willReturn($grandTotal);
         $order->method('getOrderCurrencyCode')->willReturn($currencyCode);
         $order->method('getIncrementId')->willReturn('000000001');
+        $order->method('getEntityId')->willReturn(1);
+        // PaymentSettlement::register()'s order-state guard: payable by
+        // default so the settled-order tests reach registration.
+        $order->method('getState')->willReturn(Order::STATE_NEW);
+        $order->method('getBaseTotalDue')->willReturn($grandTotal);
 
         $this->orderInterface->method('loadByIncrementId')
             ->with('000000001')
@@ -135,6 +175,59 @@ class PaymentManagementTest extends TestCase
         $this->assertSame(['status', 'reference'], array_keys($result['data']));
         $this->assertEquals('success', $result['data']['status']);
         $this->assertEquals('PSK_abc123', $result['data']['reference']);
+    }
+
+    /**
+     * `stubMatchingOrder()` leaves `orderRepository->get()` unconfigured, so
+     * `PaymentSettlement`'s fresh re-fetch falls back to the SAME `$order`
+     * instance every other test here already holds — none of them can tell
+     * "dispatches `PaymentSettlement::register()`'s returned order" apart
+     * from "dispatches its own stale `$order` variable". This test wires a
+     * distinct fresh instance so a regression back to dispatching the
+     * pre-registration order (missing the `total_paid`/invoice/transaction
+     * row registration just added) is caught. Also: a mismatched
+     * `->with(...)` argument matcher would throw from inside `dispatch()`,
+     * which this class's own broad `catch (\Throwable $e)` would silently
+     * swallow — so the dispatched argument is captured and asserted after
+     * `verifyPayment()` returns instead.
+     */
+    public function testDispatchesTheRefetchedOrderRegisterReturnedNotTheStaleLookup(): void
+    {
+        $quoteId = '42';
+        $reference = 'PSK_abc123_-~-_' . $quoteId;
+
+        $txData = $this->buildTxData('success', $quoteId);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) ['data' => $txData]);
+
+        $staleOrder = $this->stubMatchingOrder($quoteId);
+
+        $freshOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $freshOrder->method('getEntityId')->willReturn(1);
+        $freshOrder->method('getIncrementId')->willReturn('000000001');
+        $freshOrder->method('getState')->willReturn(Order::STATE_NEW);
+        $freshOrder->method('getBaseTotalDue')->willReturn(5000.00);
+        $freshOrder->method('getGrandTotal')->willReturn(5000.00);
+        $freshOrder->method('getOrderCurrencyCode')->willReturn('NGN');
+        $freshPayment = $this->createMock(OrderPayment::class);
+        $freshPayment->method('getMethod')->willReturn(Paystack::CODE);
+        $freshOrder->method('getPayment')->willReturn($freshPayment);
+        $this->orderRepository->method('get')->with(1)->willReturn($freshOrder);
+
+        $dispatchedOrder = null;
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(function (string $eventName, array $data) use (&$dispatchedOrder): void {
+                $dispatchedOrder = $data['paystack_order'] ?? null;
+            });
+
+        $this->paymentManagement->verifyPayment($reference);
+
+        $this->assertSame(
+            $freshOrder,
+            $dispatchedOrder,
+            'Must dispatch the order PaymentSettlement::register() actually settled and saved, not the stale pre-registration lookup.'
+        );
+        $this->assertNotSame($staleOrder, $dispatchedOrder);
     }
 
     public function testVerifyPaymentQuoteIdMismatch(): void

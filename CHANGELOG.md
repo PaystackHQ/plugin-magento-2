@@ -61,6 +61,34 @@ what was requested.
   unsuppressed placement email, plus a new post-payment one); both are
   registered together.
 
+### Security
+- **A single Paystack reference can no longer settle two different orders
+  (D7, narrowed to a race window — not fully closed; see the reconciliation
+  plan's Risks section).** All three verification paths now bind the
+  reference to the order via a cross-order lookup before registering the
+  payment; a reference already bound to a different order is rejected
+  (`reference_bound_elsewhere`) rather than silently advancing whichever
+  order asks second.
+- **Verified payments are now actually registered against the order**
+  (`total_paid`, an invoice, and a `sales_payment_transaction` row) — D8's
+  accounting half. Previously, every consumer dispatched
+  `paystack_payment_verify_after` without ever calling
+  `registerCaptureNotification()`, so a "Processing" order had no invoice and
+  no recorded payment. Registration is idempotent per (reference, order): a
+  repeat verify of an already-registered payment is a no-op, not a duplicate
+  capture. An order no longer in a payable state (canceled/closed) is
+  rejected (`order_not_payable`).
+
+### Changed
+- **`Observer/ObserverAfterPaymentVerify.php` no longer advances the order
+  state itself.** `Model/PaymentSettlement::register()` (above) now owns that
+  side effect via `registerCaptureNotification()`; the observer is email-only,
+  gated on `!$order->getEmailSent()` instead of the order's status. The
+  human-readable "Paystack Payment Verified and Order is being processed"
+  history comment this observer used to write is gone — replaced by core's
+  own transaction-ID comment (`registerCaptureNotification()` →
+  `addTransactionCommentsToOrder()`), not an equivalent line.
+
 ### Fixed
 - **Webhook responses now distinguish transient from permanent failures.**
   Transient conditions (transaction still settling via bank transfer/USSD,
@@ -69,10 +97,14 @@ what was requested.
   silently cancelled retries and could permanently strand a legitimate payment's
   confirmation. Genuine rejections (failed status, amount/currency mismatch)
   return HTTP 200 so Paystack does not pointlessly retry.
-- **Rejected and surplus payments are now visible to the merchant.** When the
-  (signature-verified) webhook rejects a settlement mismatch, or accepts an
-  overpayment, it writes an order status-history comment with the paid vs
-  expected amount and reference.
+- **Rejected and surplus payments are now visible to the merchant on all three
+  paths, not only the webhook.** `Model/PaymentSettlement` writes an order
+  status-history comment (paid vs expected amount, reference) for every
+  settlement rejection and every overpayment, whichever of the redirect
+  callback, inline REST endpoint, or webhook produced it — previously only
+  the webhook recorded this, so a rejected callback/inline verification
+  (including a cross-order `reference_bound_elsewhere` hit) left zero
+  merchant-visible trace.
 - **A malformed inline verification reference no longer causes a 500** on the
   anonymous REST route.
 - **After a payment fails post-charge on the inline flow, the Place Order

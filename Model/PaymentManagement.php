@@ -49,13 +49,19 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
      */
     private $transactionValidator;
 
+    /**
+     * @var \Pstk\Paystack\Model\PaymentSettlement
+     */
+    private $paymentSettlement;
+
     public function __construct(
         PaystackApiClient $paystackClient,
         \Magento\Framework\Event\Manager $eventManager,
         \Magento\Sales\Api\Data\OrderInterface $orderInterface,
         \Magento\Checkout\Model\Session $checkoutSession,
         LoggerInterface $logger,
-        TransactionValidator $transactionValidator
+        TransactionValidator $transactionValidator,
+        \Pstk\Paystack\Model\PaymentSettlement $paymentSettlement
     ) {
         $this->paystackClient = $paystackClient;
         $this->eventManager = $eventManager;
@@ -63,6 +69,7 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
         $this->checkoutSession = $checkoutSession;
         $this->logger = $logger;
         $this->transactionValidator = $transactionValidator;
+        $this->paymentSettlement = $paymentSettlement;
     }
 
     /**
@@ -110,11 +117,16 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
 
             if ($order && (string)$order->getQuoteId() === (string)$quoteId && (string)($transaction_details->data->metadata->quoteId ?? null) === (string)$quoteId) {
 
-                $failureReason = $this->transactionValidator->settlementFailureReason(
+                $registration = $this->paymentSettlement->register(
                     $transaction_details,
                     $order,
                     $this->paystackClient->isTestMode()
                 );
+                $failureReason = $registration['reason'];
+                // The settled instance register() actually mutated and
+                // saved — not the stale $order looked up above — so the
+                // event below reads/reports post-capture state.
+                $order = $registration['order'];
 
                 if ($failureReason === null) {
                     // dispatch the `paystack_payment_verify_after` event to update the order status
@@ -149,10 +161,10 @@ class PaymentManagement implements \Pstk\Paystack\Api\PaymentManagementInterface
             $this->logger->error('Paystack: verifyPayment exception', ['error' => $e->getMessage()]);
 
             if ($dispatched) {
-                // Verification succeeded and the advance was already under way when
-                // something downstream threw — the observer saves the order before it
-                // sends the email. Reporting the generic failure response here would
-                // present a paid order as rejected and invite a second payment.
+                // Verification succeeded and the save already happened inside
+                // PaymentSettlement::register() before the event was dispatched.
+                // Reporting the generic failure response here would present a paid
+                // order as rejected and invite a second payment.
                 $this->logger->warning(
                     'Paystack: verifyPayment exception after settlement dispatched — reporting success',
                     ['reference' => $reference]

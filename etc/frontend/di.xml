@@ -19,6 +19,18 @@
         <plugin name="csrf_validator_skip" type="Pstk\Paystack\Plugin\CsrfValidatorSkip" />
     </type>
 
+    <!-- Wrapped in a Proxy so PaymentSettlement's dependency graph
+         (TransactionRepositoryInterface, SearchCriteriaBuilder) stays lazy
+         for Setup.php/Recreate.php, which extend AbstractPaystackStandard
+         but never call it. OrderRepositoryInterface is already an eager,
+         direct constructor dependency of AbstractPaystackStandard itself, so
+         the Proxy does not defer it. -->
+    <type name="Pstk\Paystack\Controller\Payment\AbstractPaystackStandard">
+        <arguments>
+            <argument name="paymentSettlement" xsi:type="object">Pstk\Paystack\Model\PaymentSettlement\Proxy</argument>
+        </arguments>
+    </type>
+
     <!-- CSP: Paystack domains are whitelisted via etc/csp_whitelist.xml (the Magento-standard
          mechanism). The former PHP PolicyCollector replaced Magento's entire CSP and stalled checkout. -->
 </config>

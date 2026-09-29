@@ -41,15 +41,34 @@ class Webhook extends AbstractPaystackStandard
     /**
      * Reasons deliberately excluded from TransactionValidator::PERMANENT_FOR_WEBHOOK
      * (see its own comments) that must also never fall back to permanent once
-     * ORDER_LOOKUP_RETRY_WINDOW_SECONDS elapses — a swapped key pair or a wrong
-     * payment method on this order is never fixed by the passage of time, so
-     * unlike MALFORMED/unrecognised reasons (which do fall back to permanent
-     * below), these two keep retrying (503) indefinitely, the same treatment
-     * REASON_IN_FLIGHT gets.
+     * ORDER_LOOKUP_RETRY_WINDOW_SECONDS elapses — a swapped key pair, a wrong
+     * payment method on this order, an order that is not payable yet (or
+     * anymore), or a transient failure while registering a passed settlement
+     * is never fixed by the passage of time in the way MALFORMED/unrecognised
+     * reasons might be, so these keep retrying (503) indefinitely, the same
+     * treatment REASON_IN_FLIGHT gets:
+     * - REASON_MODE_MISMATCH / REASON_WRONG_METHOD: the misconfiguration or
+     *   method mixup is never fixed by a retry either, but recording it here
+     *   (rather than as permanent) keeps the retry window open in case the
+     *   underlying relation was simply not yet hydrated.
+     * - REASON_ORDER_NOT_PAYABLE: a bank-transfer/USSD charge that is
+     *   genuinely `pending` at callback time can settle minutes later via
+     *   this webhook — if the customer used `/paystack/payment/recreate` in
+     *   the meantime, the order is now `canceled`, and a late but genuine
+     *   `charge.success` must not be permanently dropped (money captured
+     *   with no order and no refund path). Deliberately NOT
+     *   PERMANENT_FOR_WEBHOOK, unlike REASON_REFERENCE_BOUND_ELSEWHERE, which
+     *   is not time-dependent.
+     * - REASON_REGISTRATION_FAILED: a throw from PaymentSettlement::register()'s
+     *   own bind/register/save steps after every check already passed — a
+     *   transient DB/invoice issue should keep retrying, since money may
+     *   already have moved.
      */
     private const NEVER_RECENCY_BOUNDED = [
         TransactionValidator::REASON_MODE_MISMATCH,
         TransactionValidator::REASON_WRONG_METHOD,
+        TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+        TransactionValidator::REASON_REGISTRATION_FAILED,
     ];
 
     public function execute() {
@@ -180,9 +199,11 @@ class Webhook extends AbstractPaystackStandard
     }
 
     /**
-     * Decides the webhook response for a matched order: re-verifies settlement,
-     * dispatches and logs the surplus on success, records merchant-visible
-     * history on rejection. Needs no result object — a pure decision function.
+     * Decides the webhook response for a matched order: registers the
+     * settlement (binding + capture) via PaymentSettlement, dispatches on
+     * success. Rejection history is written by PaymentSettlement itself now
+     * (uniformly across all three consumers), not here. Needs no result
+     * object — a pure decision function.
      *
      * @param object $transactionDetails Full envelope PaystackApiClient::verifyTransaction() returns
      * @param OrderInterface $order
@@ -191,17 +212,21 @@ class Webhook extends AbstractPaystackStandard
      */
     private function resolveSettlement(object $transactionDetails, OrderInterface $order, string $reference): array
     {
-        // The webhook payload's own status only got us this far; the
-        // re-verified response is the trustworthy statement of what
-        // actually happened to the money — nothing may advance the
-        // order until it settles this order, in this currency, for at
-        // least this amount.
-        $reason = $this->transactionValidator->settlementFailureReason(
+        // The webhook payload's own status only got us this far; register()
+        // re-verifies from scratch against a freshly re-fetched order — nothing
+        // may advance the order until it settles this order, in this currency,
+        // for at least this amount, and this exact reference isn't already
+        // bound to a different order.
+        $registration = $this->paymentSettlement->register(
             $transactionDetails,
             $order,
             $this->paystackClient->isTestMode()
         );
-        $expectedSubunits = $this->transactionValidator->expectedSubunits($order);
+        $reason = $registration['reason'];
+        // The settled instance register() actually mutated and saved — not
+        // the stale $order this method was called with — so every use below
+        // (the log, and the event dispatch) reads/reports post-capture state.
+        $order = $registration['order'];
 
         if (null === $reason) {
             $this->logger->info("Paystack Webhook: order found, dispatching verify event", [
@@ -213,22 +238,6 @@ class Webhook extends AbstractPaystackStandard
             // gate has actually passed — logging it earlier told Paystack a
             // charge succeeded even for rejected settlements.
             $this->paystackClient->logTransactionSuccess($reference, $this->configProvider->getPublicKey());
-
-            if ($this->transactionValidator->isOverpayment($transactionDetails, $order)) {
-                // isOverpayment() returning true guarantees paidSubunits() is non-null.
-                $paidAmount = $this->transactionValidator->paidSubunits($transactionDetails);
-                $this->recordHistory(
-                    $order,
-                    $reference,
-                    'overpaid',
-                    sprintf(
-                        'Paystack: payment overpaid — paid %d, expected %d, reference %s',
-                        $paidAmount,
-                        $expectedSubunits,
-                        $reference
-                    )
-                );
-            }
 
             // dispatch the `payment_verify_after` event to update the order status
             $this->eventManager->dispatch('paystack_payment_verify_after', [
@@ -252,28 +261,6 @@ class Webhook extends AbstractPaystackStandard
         // See TransactionValidator::PERMANENT_FOR_WEBHOOK for which reasons
         // are safe to report permanent.
         $isPermanentReason = $this->transactionValidator->isPermanentForWebhook($reason);
-
-        // Signature-verified path: every real charge fires this webhook, so
-        // this is the merchant's only visibility into "money moved but the
-        // order did not advance". Dedupes via historyMarker() so a transient
-        // reason retried for up to 72h doesn't append a comment every time.
-        $paidAmount = $this->transactionValidator->paidSubunits($transactionDetails) ?? 'unknown';
-        $paidCurrency = $transactionDetails->data->currency ?? 'unknown';
-        $this->recordHistory(
-            $order,
-            $reference,
-            $reason,
-            sprintf(
-                'Paystack: payment %s — %s: paid %s %s, expected %s %s, reference %s',
-                $isPermanentReason ? 'rejected' : 'not applied (retry pending)',
-                $reason,
-                $paidAmount,
-                $paidCurrency,
-                $expectedSubunits,
-                $order->getOrderCurrencyCode(),
-                $reference
-            )
-        );
 
         if ($isPermanentReason) {
             return [200, "rejected"];
@@ -322,57 +309,6 @@ class Webhook extends AbstractPaystackStandard
         // have a Magento order at all (see the class constant's comment).
         $this->logger->warning("Paystack Webhook: order not found and transaction not recent, treating as permanent", ['reference' => $reference]);
         return [200, "order not found"];
-    }
-
-    /**
-     * The stable (reference, reason) marker embedded in a history comment —
-     * the single definition recordHistory() writes and dedupes against, so
-     * the human-readable prose around it can be reworded without breaking
-     * dedupe.
-     *
-     * @param string $reference
-     * @param string $reasonKey
-     * @return string
-     */
-    private function historyMarker(string $reference, string $reasonKey): string
-    {
-        return sprintf('[paystack:%s:%s]', $reference, $reasonKey);
-    }
-
-    /**
-     * Writes a merchant-visible order-history comment, but only once per
-     * (reference, reason) pair: WRONG_METHOD and MALFORMED are transient (503)
-     * and Paystack's ~72h retry window would otherwise append a near-identical
-     * comment on every retry of the same rejection. A failed write, and a
-     * failed lookup of the existing history, must not turn a rejection/
-     * overpayment note into a 503 retry storm — log and continue.
-     *
-     * @param OrderInterface $order
-     * @param string $reference
-     * @param string $reasonKey
-     * @param string $comment
-     * @return void
-     */
-    private function recordHistory(OrderInterface $order, string $reference, string $reasonKey, string $comment): void
-    {
-        $marker = $this->historyMarker($reference, $reasonKey);
-        try {
-            foreach ($order->getStatusHistories() ?? [] as $history) {
-                $existingComment = $history->getComment() ?? '';
-                if (strpos($existingComment, $marker) !== false) {
-                    // Already recorded for this (reference, reason) pair — this is a
-                    // retry of an event we already wrote a comment for.
-                    return;
-                }
-            }
-
-            $order->addStatusToHistory($order->getStatus(), $comment . ' ' . $marker);
-            $this->orderRepository->save($order);
-        } catch (\Throwable $exc) {
-            // A failed history write must not turn an already-decided
-            // rejection into a 503 retry that can never fix it — log and continue.
-            $this->logger->error("Paystack Webhook: failed to write order history", ['error' => $exc->getMessage()]);
-        }
     }
 
     /**

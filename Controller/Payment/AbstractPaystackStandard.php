@@ -89,6 +89,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
     protected $transactionValidator;
 
     /**
+     *
+     * @var \Pstk\Paystack\Model\PaymentSettlement
+     */
+    protected $paymentSettlement;
+
+    /**
      * Constructor
      *
      * @param \Magento\Framework\App\Action\Context  $context
@@ -108,7 +114,8 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             \Magento\Framework\App\Request\Http $request,
             \Psr\Log\LoggerInterface $logger,
             PaystackApiClient $paystackClient,
-            ?\Pstk\Paystack\Gateway\Validator\TransactionValidator $transactionValidator = null
+            ?\Pstk\Paystack\Gateway\Validator\TransactionValidator $transactionValidator = null,
+            ?\Pstk\Paystack\Model\PaymentSettlement $paymentSettlement = null
     ) {
         $this->resultPageFactory = $resultPageFactory;
         $this->orderRepository = $orderRepository;
@@ -131,6 +138,16 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->transactionValidator = $transactionValidator
             ?: \Magento\Framework\App\ObjectManager::getInstance()
                 ->get(\Pstk\Paystack\Gateway\Validator\TransactionValidator::class);
+        // Same nullable+ObjectManager-fallback pattern, same BC reasoning —
+        // wired in via a \Pstk\Paystack\Model\PaymentSettlement\Proxy in
+        // etc/frontend/di.xml so Setup.php/Recreate.php, which never call it,
+        // don't eagerly build its dependency graph. Only TransactionRepositoryInterface
+        // and SearchCriteriaBuilder are actually deferred by the Proxy —
+        // OrderRepositoryInterface is already an eager, direct constructor
+        // dependency of this class itself, so the Proxy buys it nothing.
+        $this->paymentSettlement = $paymentSettlement
+            ?: \Magento\Framework\App\ObjectManager::getInstance()
+                ->get(\Pstk\Paystack\Model\PaymentSettlement::class);
 
         parent::__construct($context);
     }

@@ -856,6 +856,9 @@ class TransactionValidatorTest extends TestCase
             'wrong_method' => [TransactionValidator::REASON_WRONG_METHOD],
             'malformed' => [TransactionValidator::REASON_MALFORMED],
             'mode_mismatch' => [TransactionValidator::REASON_MODE_MISMATCH],
+            'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE],
+            'order_not_payable' => [TransactionValidator::REASON_ORDER_NOT_PAYABLE],
+            'registration_failed' => [TransactionValidator::REASON_REGISTRATION_FAILED],
             // Regression test for the whole finding: a reason this class does
             // not (yet) know about must fail closed, not silently invite a
             // second payment the way the three old, independent policy maps did.
@@ -878,6 +881,10 @@ class TransactionValidatorTest extends TestCase
             'amount_mismatch' => [TransactionValidator::REASON_AMOUNT_MISMATCH],
             'currency_mismatch' => [TransactionValidator::REASON_CURRENCY_MISMATCH],
             'zero_total' => [TransactionValidator::REASON_ZERO_TOTAL],
+            // Being bound to a different order is not time-dependent —
+            // retrying won't change the answer, unlike REASON_ORDER_NOT_PAYABLE
+            // below.
+            'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE],
         ];
     }
 
@@ -900,6 +907,17 @@ class TransactionValidatorTest extends TestCase
             // misconfigured secret-key pair is not "the money definitively
             // didn't settle" the same way a real amount/currency mismatch is.
             'mode_mismatch' => [TransactionValidator::REASON_MODE_MISMATCH],
+            // A bank-transfer/USSD charge genuinely `pending` at callback time
+            // can settle minutes later via the webhook — if the customer used
+            // `/paystack/payment/recreate` meanwhile, the order is now
+            // `canceled`, and a late but genuine `charge.success` must keep
+            // retrying, not be permanently dropped (money captured with no
+            // order and no refund path). See Webhook.php's own
+            // NEVER_RECENCY_BOUNDED for the never-falls-back-to-permanent half.
+            'order_not_payable' => [TransactionValidator::REASON_ORDER_NOT_PAYABLE],
+            // A transient DB/invoice issue during registration should keep
+            // retrying, since the same event redelivered later may succeed.
+            'registration_failed' => [TransactionValidator::REASON_REGISTRATION_FAILED],
             // Regression test for the whole finding: an unrecognised reason must
             // default to transient (retry), not permanent — a permanent 200 on a
             // reason we cannot classify would silently strand a real payment
@@ -941,6 +959,9 @@ class TransactionValidatorTest extends TestCase
             'wrong_method' => [TransactionValidator::REASON_WRONG_METHOD, $doNotPayAgain],
             'malformed' => [TransactionValidator::REASON_MALFORMED, $doNotPayAgain],
             'mode_mismatch' => [TransactionValidator::REASON_MODE_MISMATCH, $doNotPayAgain],
+            'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE, $doNotPayAgain],
+            'order_not_payable' => [TransactionValidator::REASON_ORDER_NOT_PAYABLE, $doNotPayAgain],
+            'registration_failed' => [TransactionValidator::REASON_REGISTRATION_FAILED, $doNotPayAgain],
             // Regression test for the whole finding: an unrecognised reason must
             // fall into the safest copy, exactly like isTerminalForCustomer()
             // fails closed on terminality for the same input.
@@ -1090,6 +1111,9 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_CURRENCY_MISMATCH,
             TransactionValidator::REASON_AMOUNT_MISMATCH,
             TransactionValidator::REASON_MODE_MISMATCH,
+            TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
+            TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
         // isPermanentForWebhook(): explicit -> PERMANENT_FOR_WEBHOOK (true);
@@ -1104,6 +1128,9 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_WRONG_METHOD,
             TransactionValidator::REASON_BAD_REFERENCE,
             TransactionValidator::REASON_MODE_MISMATCH,
+            TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
+            TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
         // customerMessage(): explicit -> its own switch case; defaulted -> the
@@ -1118,6 +1145,9 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_WRONG_METHOD,
             TransactionValidator::REASON_MALFORMED,
             TransactionValidator::REASON_MODE_MISMATCH,
+            TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
+            TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
         foreach ($reasonConstants as $name => $value) {

@@ -46,6 +46,44 @@ class TransactionValidator
     public const REASON_MODE_MISMATCH = 'mode_mismatch';
 
     /**
+     * A reference already bound (via a persisted sales_payment_transaction
+     * row) to a *different* order — the D7 cross-order attack. Money moved,
+     * definitively, just not attributable to this order; never fixed by a
+     * retry, so it is PERMANENT_FOR_WEBHOOK and never RETRYABLE_FOR_CUSTOMER.
+     * Lives here, not on Model/PaymentSettlement.php (the class that actually
+     * runs the binding check), because keeping every REASON_* constant and its
+     * classification in one place matters more than which class detects it.
+     */
+    public const REASON_REFERENCE_BOUND_ELSEWHERE = 'reference_bound_elsewhere';
+
+    /**
+     * The order is not in a state (STATE_NEW/STATE_PENDING_PAYMENT) that can
+     * still be registered as paid — e.g. canceled/closed. Never
+     * RETRYABLE_FOR_CUSTOMER (money moved or the situation is otherwise
+     * unrecoverable by retry — fail closed there), but deliberately NOT
+     * PERMANENT_FOR_WEBHOOK, unlike REASON_REFERENCE_BOUND_ELSEWHERE: a
+     * bank-transfer/USSD charge that is genuinely `pending` at callback time
+     * can settle minutes later via the webhook, and if the customer used
+     * `/paystack/payment/recreate` in the meantime the order is now
+     * `canceled` — a late but genuine `charge.success` must keep retrying
+     * (Webhook.php's own `NEVER_RECENCY_BOUNDED`), not be permanently
+     * dropped, or the money is captured with no order and no refund path.
+     */
+    public const REASON_ORDER_NOT_PAYABLE = 'order_not_payable';
+
+    /**
+     * A throw from `Model/PaymentSettlement::register()`'s own bind/register/
+     * save steps, after every validation and binding check already passed —
+     * e.g. a `LocalizedException` from `prepareInvoice()` on some order
+     * shape, or a transient DB failure on save. Money may already have moved
+     * by this point, so never RETRYABLE_FOR_CUSTOMER; not PERMANENT_FOR_WEBHOOK
+     * either (Webhook.php's `NEVER_RECENCY_BOUNDED`) — a transient
+     * registration failure should keep retrying, since the same event
+     * redelivered later may succeed once the underlying issue clears.
+     */
+    public const REASON_REGISTRATION_FAILED = 'registration_failed';
+
+    /**
      * Tolerance above the *requested* subunit amount (see the two-field
      * overpayment check in settlementFailureReason()). Covers orders paid by
      * the legacy `Math.ceil` build (pre-R1.2), which could send one subunit
@@ -89,6 +127,7 @@ class TransactionValidator
         self::REASON_AMOUNT_MISMATCH,
         self::REASON_CURRENCY_MISMATCH,
         self::REASON_ZERO_TOTAL,
+        self::REASON_REFERENCE_BOUND_ELSEWHERE,
     ];
 
     /** @var LoggerInterface */
@@ -182,6 +221,8 @@ class TransactionValidator
     }
 
     /**
+     * @internal Direct use skips reference binding and payment registration —
+     *     callers should use `Model\PaymentSettlement::register()` instead.
      * @param object         $verifyResponse Full envelope PaystackApiClient::verifyTransaction() returns
      * @param OrderInterface $order
      * @param bool           $testMode Whether the store is configured for Paystack test

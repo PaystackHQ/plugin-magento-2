@@ -100,15 +100,21 @@ class Callback extends AbstractPaystackStandard {
             if ($order && $reference === $order->getIncrementId()) {
                 // The status gate above only confirms `success`; it says nothing about
                 // whether the amount/currency paid actually settles this order, or
-                // whether the order was even placed with Paystack. That double coverage
-                // is deliberate — this is the one check that closes those gaps, and it
-                // must run before $dispatched is set so a mismatch never reaches the
-                // "payment received" warning branch below.
-                $failureReason = $this->transactionValidator->settlementFailureReason(
+                // whether the order was even placed with Paystack, or whether this
+                // exact reference already belongs to a different order. That coverage
+                // is deliberate — register() is the one call that closes those gaps,
+                // and it must run before $dispatched is set so a mismatch never reaches
+                // the "payment received" warning branch below.
+                $registration = $this->paymentSettlement->register(
                     $transactionDetails,
                     $order,
                     $this->paystackClient->isTestMode()
                 );
+                $failureReason = $registration['reason'];
+                // The settled instance register() actually mutated and
+                // saved — not the stale $order looked up above — so the
+                // event below reads/reports post-capture state.
+                $order = $registration['order'];
 
                 if (null !== $failureReason) {
                     $this->logger->warning(
@@ -172,11 +178,11 @@ class Callback extends AbstractPaystackStandard {
         }
 
         if ($dispatched) {
-            // Verification succeeded and the advance was already under way when something
-            // downstream threw — the observer saves the order before it sends the email.
+            // Verification succeeded and the save already happened inside
+            // PaymentSettlement::register() before the event was dispatched.
             // Showing the failure page here would present a paid order as failed and
-            // invite a second payment; the warning covers the narrower case where the
-            // throw came before the save, so the order is paid but not yet advanced.
+            // invite a second payment; the warning covers the narrower case where
+            // something downstream of the dispatch (e.g. the confirmation email) threw.
             $this->messageManager->addWarningMessage(
                 __("Your payment was received, but we could not finish updating your "
                     . "order. Please do not pay again — contact support if you do not "
