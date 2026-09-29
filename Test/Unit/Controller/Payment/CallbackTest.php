@@ -7,7 +7,11 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Pstk\Paystack\Controller\Payment\Callback;
 use Pstk\Paystack\Gateway\PaystackApiClient;
 use Pstk\Paystack\Gateway\Exception\ApiException;
+use Pstk\Paystack\Gateway\Validator\TransactionValidator;
+use Pstk\Paystack\Model\PaymentSettlement;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Framework\Api\SearchCriteriaInterface;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Request\Http as HttpRequest;
 use Magento\Framework\App\Response\RedirectInterface;
@@ -18,7 +22,10 @@ use Magento\Framework\View\Result\PageFactory;
 use Magento\Framework\Message\ManagerInterface as MessageManager;
 use Magento\Payment\Helper\Data as PaymentHelper;
 use Magento\Sales\Api\Data\OrderInterface;
+use Magento\Sales\Api\Data\TransactionSearchResultInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
+use Magento\Sales\Api\TransactionRepositoryInterface;
+use Magento\Sales\Model\Order;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -46,6 +53,12 @@ class CallbackTest extends TestCase
     /** @var MockObject|LoggerInterface */
     private $logger;
 
+    /** @var MockObject|OrderRepositoryInterface */
+    private $orderRepository;
+
+    /** @var MockObject|TransactionRepositoryInterface */
+    private $transactionRepository;
+
     private function createController(): Callback
     {
         $this->paystackClient = $this->createMock(PaystackApiClient::class);
@@ -54,6 +67,15 @@ class CallbackTest extends TestCase
         $this->orderInterface = $this->createMock(\Magento\Sales\Model\Order::class);
         $this->messageManager = $this->createMock(MessageManager::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        // Unconfigured: PaymentSettlement's fresh-refetch falls back to the
+        // caller's own $order instance (a real Order mock, so `instanceof
+        // Order` holds) whenever this returns something that isn't one —
+        // exactly what an unstubbed interface-typed mock does here.
+        $this->transactionRepository = $this->createMock(TransactionRepositoryInterface::class);
+        $noExistingBindings = $this->createMock(TransactionSearchResultInterface::class);
+        $noExistingBindings->method('getItems')->willReturn([]);
+        $this->transactionRepository->method('getList')->willReturn($noExistingBindings);
 
         $redirect = $this->createMock(Redirect::class);
         $redirect->method('setUrl')->willReturnSelf();
@@ -76,10 +98,22 @@ class CallbackTest extends TestCase
             $this->createMock(\Magento\Framework\Controller\ResultFactory::class)
         );
 
+        $searchCriteriaBuilder = $this->createMock(SearchCriteriaBuilder::class);
+        $searchCriteriaBuilder->method('addFilter')->willReturnSelf();
+        $searchCriteriaBuilder->method('create')->willReturn($this->createMock(SearchCriteriaInterface::class));
+
+        $paymentSettlement = new PaymentSettlement(
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $this->orderRepository,
+            $this->transactionRepository,
+            $searchCriteriaBuilder,
+            $this->createMock(LoggerInterface::class)
+        );
+
         return new Callback(
             $context,
             $this->createMock(PageFactory::class),
-            $this->createMock(OrderRepositoryInterface::class),
+            $this->orderRepository,
             $this->orderInterface,
             $this->createMock(CheckoutSession::class),
             $this->createMock(PaymentHelper::class),
@@ -89,8 +123,51 @@ class CallbackTest extends TestCase
             $this->eventManager,
             $this->request,
             $this->logger,
-            $this->paystackClient
+            $this->paystackClient,
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $paymentSettlement
         );
+    }
+
+    /**
+     * A settled order: same payment method, currency and grand total the
+     * matching-currency `settledVerifyData()` amount pays for in full.
+     */
+    private function createSettledOrder(string $incrementId): MockObject
+    {
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn($incrementId);
+        $order->method('getEntityId')->willReturn(1);
+        // PaymentSettlement::register()'s order-state guard: payable by
+        // default so the settled-order tests reach registration.
+        $order->method('getState')->willReturn(Order::STATE_NEW);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+
+        // PaymentSettlement's fresh-refetch: this order IS the "fresh" one in
+        // these tests (no separate stale/fresh distinction needed here).
+        $this->orderRepository->method('get')->with(1)->willReturn($order);
+
+        return $order;
+    }
+
+    /**
+     * Verify-response `data` fields for a successful transaction that settles the
+     * order `createSettledOrder()` builds (5000.00 NGN => 500000 subunits).
+     */
+    private function settledVerifyData(string $reference, array $overrides = []): array
+    {
+        return array_merge([
+            'reference' => $reference,
+            'status' => 'success',
+            'amount' => 500000,
+            'currency' => 'NGN',
+        ], $overrides);
     }
 
     public function testSuccessfulCallbackDispatchesEvent(): void
@@ -102,17 +179,13 @@ class CallbackTest extends TestCase
             ->willReturn('000000001_suffix');
 
         $verifyResponse = (object) [
-            'data' => (object) [
-                'reference' => '000000001_suffix',
-                'status' => 'success',
-            ],
+            'data' => (object) $this->settledVerifyData('000000001_suffix'),
         ];
         $this->paystackClient->method('verifyTransaction')
             ->with('000000001_suffix')
             ->willReturn($verifyResponse);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
         $this->orderInterface->method('loadByIncrementId')
             ->with('000000001')
             ->willReturn($order);
@@ -122,6 +195,67 @@ class CallbackTest extends TestCase
             ->with('paystack_payment_verify_after', ['paystack_order' => $order]);
 
         $controller->execute();
+    }
+
+    /**
+     * `createSettledOrder()`/`createController()` wire `orderRepository->get()`
+     * to return the SAME instance loaded via `loadByIncrementId()`, so every
+     * other test in this file can't tell "the controller dispatches
+     * PaymentSettlement::register()'s returned order" apart from "the
+     * controller dispatches its own stale $order variable" — the two are
+     * always identical there. Here they are deliberately distinct mocks, so a
+     * regression back to dispatching the stale, pre-registration `$order`
+     * (missing the `total_paid`/invoice/transaction row registration just
+     * added) is caught.
+     */
+    public function testDispatchesTheRefetchedOrderRegisterReturnedNotTheStaleLookup(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')
+            ->with('reference')
+            ->willReturn('000000001_suffix');
+
+        $verifyResponse = (object) [
+            'data' => (object) $this->settledVerifyData('000000001_suffix'),
+        ];
+        $this->paystackClient->method('verifyTransaction')
+            ->with('000000001_suffix')
+            ->willReturn($verifyResponse);
+
+        $staleOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $staleOrder->method('getIncrementId')->willReturn('000000001');
+        $staleOrder->method('getEntityId')->willReturn(1);
+
+        // createSettledOrder() already wires orderRepository->get(1) to
+        // return this instance — it is the "fresh" refetch here.
+        $freshOrder = $this->createSettledOrder('000000001');
+
+        $this->orderInterface->method('loadByIncrementId')
+            ->with('000000001')
+            ->willReturn($staleOrder);
+
+        // A mismatched `->with(...)` argument matcher throws from inside
+        // dispatch() itself — which this controller's own broad
+        // `catch (\Throwable $e)` would silently swallow, letting the test
+        // pass regardless of which order was actually dispatched. Capturing
+        // the argument instead and asserting on it after execute() returns
+        // avoids that false-negative.
+        $dispatchedOrder = null;
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(function (string $eventName, array $data) use (&$dispatchedOrder): void {
+                $dispatchedOrder = $data['paystack_order'] ?? null;
+            });
+
+        $controller->execute();
+
+        $this->assertSame(
+            $freshOrder,
+            $dispatchedOrder,
+            'Must dispatch the order PaymentSettlement::register() actually settled and saved, not the stale pre-registration lookup.'
+        );
+        $this->assertNotSame($staleOrder, $dispatchedOrder);
     }
 
     /**
@@ -137,13 +271,9 @@ class CallbackTest extends TestCase
 
         $this->paystackClient->method('verifyTransaction')
             ->with('000000099_attacker')
-            ->willReturn((object) ['data' => (object) [
-                'reference' => '000000001_suffix',
-                'status' => 'success',
-            ]]);
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001_suffix')]);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
 
         $this->orderInterface->expects($this->once())
             ->method('loadByIncrementId')
@@ -358,13 +488,9 @@ class CallbackTest extends TestCase
 
         $this->request->method('get')->willReturn('000000001');
         $this->paystackClient->method('verifyTransaction')
-            ->willReturn((object) ['data' => (object) [
-                'reference' => '000000001',
-                'status' => 'success',
-            ]]);
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
 
-        $order = $this->createMock(\Magento\Sales\Model\Order::class);
-        $order->method('getIncrementId')->willReturn('000000001');
+        $order = $this->createSettledOrder('000000001');
         $this->orderInterface->method('loadByIncrementId')->willReturn($order);
 
         $this->eventManager->method('dispatch')
@@ -399,6 +525,162 @@ class CallbackTest extends TestCase
         $this->orderInterface->method('loadByIncrementId')->willReturn($order);
 
         $this->eventManager->expects($this->never())->method('dispatch');
+
+        $controller->execute();
+    }
+
+    /**
+     * D6: a `success` status alone is not settlement — the amount paid must cover the
+     * order. Short by more than the ±1-subunit tolerance must fail closed exactly like
+     * the D5 status gate, and must never reach the "payment received" warning branch at
+     * :127.
+     */
+    public function testAmountBelowToleranceWindowDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'amount' => 499998,
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        // AMOUNT_MISMATCH means the payment DID complete, just not for enough —
+        // asserting the copy is the regression test for the bug where this
+        // branch used to say "was not completed", which is false here.
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A `success` status paid in the wrong currency does not settle an order priced in
+     * another currency, however close the numbers look.
+     */
+    public function testCurrencyMismatchDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'currency' => 'USD',
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A charge settled against an order that was not placed with Paystack must not
+     * advance it — narrows the surface a stray/forged reference can act on.
+     */
+    public function testWrongPaymentMethodDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn('000000001');
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn('checkmo');
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * A settled-looking `success` status against a zero/negative expected or paid
+     * total must not settle the order — the fourth settlement-gate reason,
+     * completing copy coverage for all of customerMessage()'s default-bucket
+     * reasons through the callback path.
+     */
+    public function testZeroTotalDoesNotDispatchEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001')]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getIncrementId')->willReturn('000000001');
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(\Pstk\Paystack\Model\Payment\Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(0.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->messageManager->expects($this->once())
+            ->method('addErrorMessage')
+            ->with($this->callback(function ($m) {
+                return str_contains((string) $m, 'do not pay again');
+            }));
+        $this->messageManager->expects($this->never())->method('addSuccessMessage');
+        $this->messageManager->expects($this->never())->method('addWarningMessage');
+
+        $controller->execute();
+    }
+
+    /**
+     * Overpayment by a single subunit still settles the order — required for
+     * Paystack's customer-bears-fee configuration, where `data.amount` includes the
+     * fee on top of the order total. The `paid >= expected` window passes.
+     */
+    public function testOverpayByOneSubunitStillDispatchesEvent(): void
+    {
+        $controller = $this->createController();
+
+        $this->request->method('get')->willReturn('000000001');
+        $this->paystackClient->method('verifyTransaction')
+            ->willReturn((object) ['data' => (object) $this->settledVerifyData('000000001', [
+                'amount' => 500001,
+            ])]);
+
+        $order = $this->createSettledOrder('000000001');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->with('paystack_payment_verify_after', ['paystack_order' => $order]);
 
         $controller->execute();
     }

@@ -23,23 +23,22 @@ class ObserverAfterPaymentVerifyTest extends TestCase
         $this->observer = new ObserverAfterPaymentVerify($this->orderSender);
     }
 
-    public function testPendingOrderTransitionsToProcessing(): void
+    /**
+     * Model\PaymentSettlement::register() now owns advancing the order
+     * (registerCaptureNotification() flips it to STATE_PROCESSING as a side
+     * effect) — this observer is email-only. It must not set state/history
+     * itself, and it must not save() the order: it receives the caller's own,
+     * pre-register() instance, and saving it here would write that stale
+     * instance back over the row register() already persisted.
+     */
+    public function testEmailNotYetSentSendsConfirmationEmail(): void
     {
         $order = $this->createMock(Order::class);
-        $order->method('getStatus')->willReturn('pending');
+        $order->method('getEmailSent')->willReturn(null);
 
-        $order->expects($this->once())
-            ->method('setState')
-            ->with(Order::STATE_PROCESSING)
-            ->willReturn($order);
-        $order->expects($this->once())
-            ->method('addStatusToHistory')
-            ->with(
-                Order::STATE_PROCESSING,
-                $this->callback(fn($msg) => str_contains((string)$msg, 'Paystack Payment Verified')),
-                true
-            )
-            ->willReturn($order);
+        $order->expects($this->never())->method('setState');
+        $order->expects($this->never())->method('addStatusToHistory');
+        $order->expects($this->never())->method('save');
         $order->expects($this->once())
             ->method('setCanSendNewEmailFlag')
             ->with(true)
@@ -48,7 +47,6 @@ class ObserverAfterPaymentVerifyTest extends TestCase
             ->method('setCustomerNoteNotify')
             ->with(true)
             ->willReturn($order);
-        $order->expects($this->once())->method('save');
 
         $this->orderSender->expects($this->once())
             ->method('send')
@@ -60,20 +58,43 @@ class ObserverAfterPaymentVerifyTest extends TestCase
     }
 
     /**
-     * NOTE for the verification-gate work: this asserts the *status string* gate
-     * that the observer currently uses, which is itself a known defect — a merchant
-     * who assigns a custom default status to state New (e.g. `awaiting_payment`)
-     * gets orders whose status is not the literal 'pending', so the observer no-ops
-     * on every verified payment. When that is fixed to gate on state, this test is
-     * expected to change; that is a planned correction, not a green test being bent.
+     * The gate is `!$order->getEmailSent()`, not the order's status/state —
+     * `register()` may already have advanced the order to Processing by the
+     * time this observer runs, and that must not itself suppress the email.
      */
-    public function testNonPendingOrderIsNotUpdated(): void
+    public function testAlreadyAdvancedOrderStillSendsEmailWhenNotYetSent(): void
     {
         $order = $this->createMock(Order::class);
-        $order->method('getStatus')->willReturn('processing');
+        $order->method('getEmailSent')->willReturn(null);
+        $order->method('setCanSendNewEmailFlag')->willReturn($order);
+        $order->method('setCustomerNoteNotify')->willReturn($order);
 
         $order->expects($this->never())->method('setState');
         $order->expects($this->never())->method('save');
+
+        $this->orderSender->expects($this->once())
+            ->method('send')
+            ->with($order, true);
+
+        $eventObserver = new Observer(['paystack_order' => $order]);
+
+        $this->observer->execute($eventObserver);
+    }
+
+    /**
+     * A repeat dispatch (webhook + inline race, or a retried callback) once the
+     * confirmation email has already gone out must not send a second one.
+     */
+    public function testEmailAlreadySentDoesNotResend(): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getEmailSent')->willReturn(true);
+
+        $order->expects($this->never())->method('setCanSendNewEmailFlag');
+        $order->expects($this->never())->method('setCustomerNoteNotify');
+        $order->expects($this->never())->method('save');
+
+        $this->orderSender->expects($this->never())->method('send');
 
         $eventObserver = new Observer(['paystack_order' => $order]);
 
@@ -83,13 +104,11 @@ class ObserverAfterPaymentVerifyTest extends TestCase
     public function testEmailSendingFailureDoesNotAffectOrderStatus(): void
     {
         $order = $this->createMock(Order::class);
-        $order->method('getStatus')->willReturn('pending');
-        $order->method('setState')->willReturn($order);
-        $order->method('addStatusToHistory')->willReturn($order);
+        $order->method('getEmailSent')->willReturn(null);
         $order->method('setCanSendNewEmailFlag')->willReturn($order);
         $order->method('setCustomerNoteNotify')->willReturn($order);
 
-        $order->expects($this->once())->method('save');
+        $order->expects($this->never())->method('save');
 
         $this->orderSender->method('send')
             ->willThrowException(new \Exception('SMTP failure'));
@@ -103,11 +122,11 @@ class ObserverAfterPaymentVerifyTest extends TestCase
     public function testNullOrderDoesNotCrash(): void
     {
         // This case genuinely only guarantees "does not throw": remove the `$order &&`
-        // guard from the production code and it dereferences null at getStatus(),
+        // guard from the production code and it dereferences null at getEmailSent(),
         // failing here on that Error before the never() below could be evaluated.
         // The never() is therefore a smoke check, not the assertion doing the work.
-        // The distinguishing negative case — a real order that must NOT advance — is
-        // testNonPendingOrderIsNotUpdated above.
+        // The distinguishing negative case — a real order that must NOT resend — is
+        // testEmailAlreadySentDoesNotResend above.
         $this->orderSender->expects($this->never())->method('send');
 
         $eventObserver = new Observer(['paystack_order' => null]);

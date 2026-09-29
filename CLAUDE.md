@@ -108,20 +108,20 @@ There are two integration types, selectable in admin config:
 **Inline (default)**: Paystack popup opens in the browser after order is placed.
 1. JS calls `afterPlaceOrder()` → Paystack popup opens
 2. On success, JS calls `GET /V1/paystack/verify/{reference}_{quoteId}` (REST API, anonymous)
-3. `PaymentManagement::verifyPayment()` verifies with Paystack API, dispatches `paystack_payment_verify_after`
-4. `ObserverAfterPaymentVerify` sets order to Processing and sends confirmation email
+3. `PaymentManagement::verifyPayment()` verifies with Paystack API, calls `Model/PaymentSettlement::register()` (binds the reference, registers the payment, advances order state), then dispatches `paystack_payment_verify_after`
+4. `ObserverAfterPaymentVerify` sends the confirmation email (email-only — see below)
 
 **Standard (redirect)**: Customer is redirected to Paystack's hosted page.
 1. `/paystack/payment/setup` — initializes transaction, redirects to Paystack
-2. `/paystack/payment/callback` — Paystack returns here; verifies transaction, dispatches `paystack_payment_verify_after`
+2. `/paystack/payment/callback` — Paystack returns here; verifies transaction, calls `Model/PaymentSettlement::register()`, dispatches `paystack_payment_verify_after`
 3. `/paystack/payment/recreate` — retry path: cancels the failed/abandoned order, restores the quote, and redirects back to the checkout payment step
 
 **Webhook** (independent, server-to-server):
 - `/paystack/payment/webhook` — receives `charge.success` events from Paystack
-- Validates HMAC-SHA512 signature, verifies transaction, dispatches `paystack_payment_verify_after`
+- Validates HMAC-SHA512 signature, verifies transaction, calls `Model/PaymentSettlement::register()`, dispatches `paystack_payment_verify_after`
 - CSRF validation skipped via `Plugin/CsrfValidatorSkip.php`
 
-The custom event `paystack_payment_verify_after` is the single point where order status is updated to Processing and confirmation email is sent (`Observer/ObserverAfterPaymentVerify.php`). Initial order confirmation email is suppressed by `ObserverBeforeSalesOrderPlace` until payment is verified.
+`Model/PaymentSettlement::register()` is the single class that binds the Paystack reference to an order, registers the captured payment (`total_paid`, invoice, transaction row via `registerCaptureNotification()`), and records rejection history — for all three verification paths above, before any of them dispatches `paystack_payment_verify_after`. Each consumer dispatches the settled order instance `register()` returns, not its own stale one. `ObserverAfterPaymentVerify.php` no longer advances order state at all: it is email-only now, gated on `!$order->getEmailSent()` (register() already saved the order by the time the observer runs). Initial order confirmation email is suppressed by `ObserverBeforeSalesOrderPlace` until payment is verified. Both observers must be registered in **every** DI area a checkout path can place/verify an order from — `Model/PaymentManagement.php` (the inline flow's default integration type) runs in `webapi_rest`, not `frontend`, so both `etc/frontend/events.xml` and `etc/webapi_rest/events.xml` register both events; registering only one observer in `webapi_rest` without the other caused either a missing post-payment confirmation (inline orders stuck unadvanced) or a duplicate confirmation email (placement email unsuppressed, post-payment email also sent).
 
 ### Key Classes
 
@@ -129,6 +129,7 @@ The custom event `paystack_payment_verify_after` is the single point where order
 |---|---|
 | `Gateway/PaystackApiClient.php` | All Paystack API calls: initialize transaction, verify, validate webhook signature |
 | `Model/PaymentManagement.php` | REST API endpoint for inline payment verification |
+| `Model/PaymentSettlement.php` | Binds the Paystack reference to an order, registers the captured payment, and records rejection/overpayment history — shared by all three verification paths |
 | `Model/Ui/ConfigProvider.php` | Injects public key, integration type, and URLs into checkout JS config |
 | `Controller/Payment/AbstractPaystackStandard.php` | Base controller with shared utilities (quote loading, message handling) |
 | `etc/csp_whitelist.xml` | Whitelists Paystack domains in Magento's Content Security Policy (additive; the Magento-standard mechanism) |
