@@ -133,6 +133,16 @@ what was requested.
   D9/R2.8) — not fixed by this settlement-gate work, which only changed the
   webhook's *retry* semantics (transient vs. permanent), not its order-lookup
   logic.
+- The reference-to-order binding introduced above closes the *sequential*
+  version of "one charge settles two orders" but is a read-then-write check
+  with no lock: two verifications racing at the exact same instant, for a
+  reference not yet bound to anything, can still both pass the check before
+  either saves. Reference-keyed locking (tracked as a corrected R2.4) is not
+  implemented in this release.
+- A verified, registered payment is not refundable through Magento's own
+  Credit Memo action — refunds must be issued directly from the Paystack
+  dashboard. This is a pre-existing gap, not introduced by this release; see
+  the User Guide's Refunds section.
 
 ### Upgrade note
 If a store's checkout was relying (unknowingly) on under- or mis-paid
