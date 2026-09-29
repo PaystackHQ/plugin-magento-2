@@ -125,7 +125,8 @@ class CallbackTest extends TestCase
             $this->logger,
             $this->paystackClient,
             new TransactionValidator($this->createMock(LoggerInterface::class)),
-            $paymentSettlement
+            $paymentSettlement,
+            $this->createMock(\Pstk\Paystack\Model\WebhookOrderResolver::class)
         );
     }
 

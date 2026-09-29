@@ -78,7 +78,8 @@ class RecreateTest extends TestCase
             $this->createMock(LoggerInterface::class),
             $this->createMock(PaystackApiClient::class),
             new TransactionValidator($this->createMock(LoggerInterface::class)),
-            $this->createMock(PaymentSettlement::class)
+            $this->createMock(PaymentSettlement::class),
+            $this->createMock(\Pstk\Paystack\Model\WebhookOrderResolver::class)
         );
     }
 

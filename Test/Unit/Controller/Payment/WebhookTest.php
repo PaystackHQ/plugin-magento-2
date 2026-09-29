@@ -10,6 +10,7 @@ use Pstk\Paystack\Gateway\Exception\ApiException;
 use Pstk\Paystack\Gateway\Validator\TransactionValidator;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Pstk\Paystack\Model\PaymentSettlement;
+use Pstk\Paystack\Model\WebhookOrderResolver;
 use Pstk\Paystack\Model\Ui\ConfigProvider;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Api\SearchCriteriaInterface;
@@ -61,6 +62,9 @@ class WebhookTest extends TestCase
 
     /** @var MockObject|TransactionRepositoryInterface */
     private $transactionRepository;
+
+    /** @var array Constructor args of Webhook, so a test can swap the resolver */
+    private $controllerArgs;
 
     protected function setUp(): void
     {
@@ -123,7 +127,19 @@ class WebhookTest extends TestCase
             $this->createMock(LoggerInterface::class)
         );
 
-        $this->controller = new Webhook(
+        // A real resolver over the same mocked repositories, so the existing
+        // tests keep driving lookups through `orderInterface`/`orderRepository`
+        // exactly as before; resolver-specific cases live in WebhookOrderResolverTest.
+        $webhookOrderResolver = new WebhookOrderResolver(
+            $this->orderRepository,
+            $searchCriteriaBuilder,
+            $this->transactionRepository,
+            $this->orderInterface,
+            new TransactionValidator($this->createMock(LoggerInterface::class)),
+            $this->createMock(LoggerInterface::class)
+        );
+
+        $this->controllerArgs = [
             $context,
             $pageFactory,
             $this->orderRepository,
@@ -138,18 +154,10 @@ class WebhookTest extends TestCase
             $this->logger,
             $this->paystackClient,
             new TransactionValidator($this->createMock(LoggerInterface::class)),
-            $paymentSettlement
-        );
-    }
-
-    protected function tearDown(): void
-    {
-        // The webhook's quoteId fallback reaches for ObjectManager::getInstance()
-        // directly. A test that primes the static instance to exercise that branch
-        // must not leak it into whichever test runs next in this process.
-        $reflection = new \ReflectionClass(\Magento\Framework\App\ObjectManager::class);
-        $property = $reflection->getProperty('_instance');
-        $property->setValue(null, null);
+            $paymentSettlement,
+            $webhookOrderResolver
+        ];
+        $this->controller = new Webhook(...$this->controllerArgs);
     }
 
     /**
@@ -349,45 +357,37 @@ class WebhookTest extends TestCase
         $this->controller->execute();
     }
 
+    /**
+     * A lone order on the verify response's metadata.quoteId settles through
+     * the full gate — metadata comes from the re-verified response.
+     */
     public function testChargeSuccessWithQuoteIdFallback(): void
     {
-        $rawBody = json_encode([
+        $this->request->method('getContent')->willReturn(json_encode([
             'event' => 'charge.success',
-            'data' => [
-                'status' => 'success',
-                'reference' => 'PSK_ref123',
-                'metadata' => ['quoteId' => '55'],
-            ],
-        ]);
-
-        $this->request->method('getContent')->willReturn($rawBody);
+            'data' => ['status' => 'success', 'reference' => 'PSK_ref123'],
+        ]));
         $this->request->method('getHeader')->willReturn('valid_sig');
         $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
-
-        $verifyResponse = (object) [
-            'data' => (object) [
-                'reference' => 'PSK_ref123',
-                'status' => 'success',
-                'metadata' => (object) ['quoteId' => '55'],
-            ],
-        ];
-        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('PSK_ref123', ['metadata' => (object) ['quoteId' => '55']]),
+        ]);
         $this->configProvider->method('getPublicKey')->willReturn('pk_test');
 
-        // loadByIncrementId returns empty order (not found by reference)
         $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
         $emptyOrder->method('getId')->willReturn(null);
         $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
 
-        // The webhook uses ObjectManager::getInstance() for the fallback path, which
-        // cannot be easily unit-tested here without priming the static instance (done
-        // separately below in testQuoteIdFallbackWithAmountMismatchDoesNotDispatch, the
-        // test that actually exercises this branch's settlement gate). This test is
-        // limited to the behavioral floor that holds regardless of how that call
-        // resolves: the lookup was attempted, and nothing dispatched or saved off it.
-        $this->orderInterface->expects($this->once())->method('loadByIncrementId');
-        $this->eventManager->expects($this->never())->method('dispatch');
-        $this->orderRepository->expects($this->never())->method('save');
+        $order = $this->createSettledOrder('000000055');
+        $this->stubQuoteOrders([$order]);
+        $this->orderRepository->method('get')->willReturn($order);
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
+        $this->eventManager->expects($this->once())
+            ->method('dispatch')
+            ->with('paystack_payment_verify_after', ['paystack_order' => $order]);
+
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with(200);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('success');
 
         $this->controller->execute();
     }
@@ -398,23 +398,18 @@ class WebhookTest extends TestCase
      */
     public function testQuoteIdFallbackWithAmountMismatchDoesNotDispatch(): void
     {
-        $rawBody = json_encode([
+        $this->request->method('getContent')->willReturn(json_encode([
             'event' => 'charge.success',
-            'data' => [
-                'status' => 'success',
-                'reference' => 'PSK_ref456',
-                'metadata' => ['quoteId' => '77'],
-            ],
-        ]);
-
-        $this->request->method('getContent')->willReturn($rawBody);
+            'data' => ['status' => 'success', 'reference' => 'PSK_ref456'],
+        ]));
         $this->request->method('getHeader')->willReturn('valid_sig');
         $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
-
-        $verifyResponse = (object) [
-            'data' => (object) $this->settledVerifyData('PSK_ref456', ['amount' => 499998]),
-        ];
-        $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('PSK_ref456', [
+                'amount' => 499998,
+                'metadata' => (object) ['quoteId' => '77'],
+            ]),
+        ]);
         $this->configProvider->method('getPublicKey')->willReturn('pk_test');
 
         $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
@@ -425,37 +420,150 @@ class WebhookTest extends TestCase
         $order->expects($this->once())
             ->method('addStatusToHistory')
             ->with('pending', $this->stringContains('amount_mismatch'));
-
-        // OrderSearchResultInterface itself has no getFirstItem() — the concrete
-        // collection orderRepository->getList() actually returns does, which is what
-        // Webhook.php's fallback branch relies on.
-        $searchResult = $this->createMock(\Magento\Sales\Model\ResourceModel\Order\Collection::class);
-        $searchResult->method('getTotalCount')->willReturn(1);
-        $searchResult->method('getFirstItem')->willReturn($order);
-        $this->orderRepository->method('getList')->willReturn($searchResult);
+        $this->stubQuoteOrders([$order]);
+        $this->orderRepository->method('get')->willReturn($order);
         $this->orderRepository->expects($this->once())->method('save')->with($order);
-
-        $searchCriteriaBuilder = $this->createMock(\Magento\Framework\Api\SearchCriteriaBuilder::class);
-        $searchCriteriaBuilder->method('addFilter')->willReturnSelf();
-        $searchCriteriaBuilder->method('create')
-            ->willReturn($this->createMock(\Magento\Framework\Api\SearchCriteria::class));
-
-        $objectManager = $this->createMock(\Magento\Framework\ObjectManagerInterface::class);
-        $objectManager->method('create')
-            ->with('Magento\Framework\Api\SearchCriteriaBuilder')
-            ->willReturn($searchCriteriaBuilder);
-        \Magento\Framework\App\ObjectManager::setInstance($objectManager);
 
         $this->eventManager->expects($this->never())->method('dispatch');
 
-        $this->rawResult->expects($this->atLeastOnce())
-            ->method('setHttpResponseCode')
-            ->with(200);
-        $this->rawResult->expects($this->atLeastOnce())
-            ->method('setContents')
-            ->with('rejected');
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with(200);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('rejected');
 
         $this->controller->execute();
+    }
+
+    /**
+     * The event payload is not what was re-verified: metadata present only
+     * there must not find an order.
+     */
+    public function testEventOnlyMetadataIsIgnored(): void
+    {
+        $this->request->method('getContent')->willReturn(json_encode([
+            'event' => 'charge.success',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'PSK_ref789',
+                'metadata' => ['quoteId' => '55', 'orderId' => '9'],
+            ],
+        ]));
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('PSK_ref789', ['paid_at' => date('c')]),
+        ]);
+
+        $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $emptyOrder->method('getId')->willReturn(null);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
+
+        $this->orderRepository->expects($this->never())->method('getList');
+        $this->orderRepository->expects($this->never())->method('save');
+        $this->eventManager->expects($this->never())->method('dispatch');
+
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with(503);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('order not found');
+
+        $this->controller->execute();
+    }
+
+    /**
+     * A resolver that finds nothing takes the existing order-not-found path:
+     * transient while recent, permanent once stale.
+     *
+     * @dataProvider resolverFindsNothingProvider
+     */
+    public function testResolverReturningNullTakesOrderNotFoundPath(string $paidAt, int $expectedCode): void
+    {
+        $resolver = $this->createMock(WebhookOrderResolver::class);
+        $resolver->expects($this->once())->method('resolve')->with('ORDER_RN')->willReturn(null);
+        $args = $this->controllerArgs;
+        $args[15] = $resolver;
+        $controller = new Webhook(...$args);
+
+        $this->request->method('getContent')->willReturn(json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'ORDER_RN'],
+        ]));
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('ORDER_RN', ['paid_at' => $paidAt]),
+        ]);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with($expectedCode);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('order not found');
+
+        $controller->execute();
+    }
+
+    public static function resolverFindsNothingProvider(): array
+    {
+        return [
+            'recent' => [date('c', time() - 60), 503],
+            'stale' => [date('c', time() - 7200), 200],
+        ];
+    }
+
+    /**
+     * A lone order the quote lookup returns is passed to register() whatever
+     * its state, so a not-payable one is rejected there (ORDER_NOT_PAYABLE ->
+     * 503). Uses a HOLDED order rather than a canceled one: item F of the plan
+     * turns canceled into an acknowledged 200, while holded stays 503, so this
+     * test stays valid after F.
+     */
+    public function testLoneNotPayableOrderOnQuoteIsRejectedNotPayable503(): void
+    {
+        $this->request->method('getContent')->willReturn(json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'PSK_hold'],
+        ]));
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('PSK_hold', ['metadata' => (object) ['quoteId' => '88']]),
+        ]);
+
+        $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
+        $emptyOrder->method('getId')->willReturn(null);
+        $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getId')->willReturn(1);
+        $order->method('getEntityId')->willReturn(1);
+        $order->method('getIncrementId')->willReturn('000000088');
+        $order->method('getState')->willReturn(Order::STATE_HOLDED);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $order->method('getStatusHistories')->willReturn([]);
+        $this->stubQuoteOrders([$order]);
+        $this->orderRepository->method('get')->willReturn($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with(503);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('unverified');
+
+        $this->controller->execute();
+    }
+
+    /**
+     * Makes orderRepository->getList() return these orders, standing in for
+     * the resolver's quote_id lookup.
+     *
+     * @param MockObject[] $orders
+     */
+    private function stubQuoteOrders(array $orders): void
+    {
+        $searchResult = $this->createMock(OrderSearchResultInterface::class);
+        $searchResult->method('getItems')->willReturn($orders);
+        $this->orderRepository->method('getList')->willReturn($searchResult);
     }
 
     public function testInvalidJsonPayloadReturnsInvalidPayload(): void
@@ -1266,7 +1374,7 @@ class WebhookTest extends TestCase
         $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
         $this->configProvider->method('getPublicKey')->willReturn('pk_test');
 
-        // No metadata.quoteId, so the fallback lookup is never attempted.
+        // No verified metadata.quoteId, so the quote lookup is never attempted.
         $emptyOrder = $this->createMock(\Magento\Sales\Model\Order::class);
         $emptyOrder->method('getId')->willReturn(null);
         $this->orderInterface->method('loadByIncrementId')->willReturn($emptyOrder);
@@ -1547,14 +1655,16 @@ class WebhookTest extends TestCase
         $this->paystackClient->method('verifyTransaction')->willReturn($verifyResponse);
         $this->configProvider->method('getPublicKey')->willReturn('pk_test');
 
-        // Canceled: not in STATE_NEW/STATE_PENDING_PAYMENT, so
-        // PaymentSettlement's order-state guard rejects with
-        // REASON_ORDER_NOT_PAYABLE.
+        // Held: not in STATE_NEW/STATE_PENDING_PAYMENT, so PaymentSettlement's
+        // order-state guard rejects with REASON_ORDER_NOT_PAYABLE. (A canceled
+        // order is now the terminal ORDER_CLOSED — see
+        // testCanceledOrderIsAcknowledgedOnceRejectionIsRecorded — so it no
+        // longer exercises the never-recency-bounded retry.)
         $order = $this->createMock(\Magento\Sales\Model\Order::class);
         $order->method('getId')->willReturn(1);
         $order->method('getEntityId')->willReturn(1);
         $order->method('getIncrementId')->willReturn('ORDER_047');
-        $order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $order->method('getState')->willReturn(Order::STATE_HOLDED);
         $order->method('getBaseTotalDue')->willReturn(5000.00);
         $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
         $payment->method('getMethod')->willReturn(Paystack::CODE);
@@ -1582,6 +1692,46 @@ class WebhookTest extends TestCase
             'recent' => [date('c', time() - 60)],
             'stale' => [date('c', time() - 7200)],
         ];
+    }
+
+    /**
+     * A charge for a canceled order can never settle it: once the rejection is
+     * durably on the order's history the webhook acknowledges (200) instead of
+     * having Paystack retry for its whole budget.
+     */
+    public function testCanceledOrderIsAcknowledgedOnceRejectionIsRecorded(): void
+    {
+        $this->request->method('getContent')->willReturn(json_encode([
+            'event' => 'charge.success',
+            'data' => ['status' => 'success', 'reference' => 'ORDER_048'],
+        ]));
+        $this->request->method('getHeader')->willReturn('valid_sig');
+        $this->paystackClient->method('validateWebhookSignature')->willReturn(true);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) [
+            'data' => (object) $this->settledVerifyData('ORDER_048'),
+        ]);
+
+        $order = $this->createMock(\Magento\Sales\Model\Order::class);
+        $order->method('getId')->willReturn(1);
+        $order->method('getEntityId')->willReturn(1);
+        $order->method('getIncrementId')->willReturn('ORDER_048');
+        $order->method('getState')->willReturn(Order::STATE_CANCELED);
+        $order->method('getBaseTotalDue')->willReturn(5000.00);
+        $payment = $this->createMock(\Magento\Sales\Model\Order\Payment::class);
+        $payment->method('getMethod')->willReturn(Paystack::CODE);
+        $order->method('getPayment')->willReturn($payment);
+        $order->method('getGrandTotal')->willReturn(5000.00);
+        $order->method('getOrderCurrencyCode')->willReturn('NGN');
+        $order->method('getStatusHistories')->willReturn([]);
+        $order->expects($this->once())->method('addStatusToHistory');
+        $this->orderInterface->method('loadByIncrementId')->willReturn($order);
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+        $this->rawResult->expects($this->atLeastOnce())->method('setHttpResponseCode')->with(200);
+        $this->rawResult->expects($this->atLeastOnce())->method('setContents')->with('rejected');
+
+        $this->controller->execute();
     }
 
     public function testDuplicateWebhookDeliveryWritesHistoryCommentOnlyOnce(): void

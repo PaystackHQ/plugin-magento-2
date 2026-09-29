@@ -95,6 +95,12 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
     protected $paymentSettlement;
 
     /**
+     *
+     * @var \Pstk\Paystack\Model\WebhookOrderResolver
+     */
+    protected $webhookOrderResolver;
+
+    /**
      * Constructor
      *
      * @param \Magento\Framework\App\Action\Context  $context
@@ -115,7 +121,8 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
             \Psr\Log\LoggerInterface $logger,
             PaystackApiClient $paystackClient,
             ?\Pstk\Paystack\Gateway\Validator\TransactionValidator $transactionValidator = null,
-            ?\Pstk\Paystack\Model\PaymentSettlement $paymentSettlement = null
+            ?\Pstk\Paystack\Model\PaymentSettlement $paymentSettlement = null,
+            ?\Pstk\Paystack\Model\WebhookOrderResolver $webhookOrderResolver = null
     ) {
         $this->resultPageFactory = $resultPageFactory;
         $this->orderRepository = $orderRepository;
@@ -148,6 +155,11 @@ abstract class AbstractPaystackStandard extends \Magento\Framework\App\Action\Ac
         $this->paymentSettlement = $paymentSettlement
             ?: \Magento\Framework\App\ObjectManager::getInstance()
                 ->get(\Pstk\Paystack\Model\PaymentSettlement::class);
+        // Same pattern and BC reasoning again; only Webhook.php calls it, so
+        // it is Proxy-wired in etc/frontend/di.xml too.
+        $this->webhookOrderResolver = $webhookOrderResolver
+            ?: \Magento\Framework\App\ObjectManager::getInstance()
+                ->get(\Pstk\Paystack\Model\WebhookOrderResolver::class);
 
         parent::__construct($context);
     }
