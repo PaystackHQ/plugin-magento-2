@@ -47,6 +47,8 @@ class Recreate extends AbstractPaystackStandard {
 
         // Allow-list, not deny-list: only the two pre-payment states are
         // restorable, so a future state this list doesn't know about fails closed.
+        // Deliberately its own list, not TransactionValidator::isPayable(): this
+        // gates an anonymous cancel and must not widen if "payable" ever does.
         $isPrePaymentState = in_array(
             $order->getState(),
             [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT],

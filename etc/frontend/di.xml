@@ -28,6 +28,8 @@
     <type name="Pstk\Paystack\Controller\Payment\AbstractPaystackStandard">
         <arguments>
             <argument name="paymentSettlement" xsi:type="object">Pstk\Paystack\Model\PaymentSettlement\Proxy</argument>
+            <!-- Same reasoning: only Webhook.php resolves orders through it. -->
+            <argument name="webhookOrderResolver" xsi:type="object">Pstk\Paystack\Model\WebhookOrderResolver\Proxy</argument>
         </arguments>
     </type>
 

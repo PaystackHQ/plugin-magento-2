@@ -858,6 +858,7 @@ class TransactionValidatorTest extends TestCase
             'mode_mismatch' => [TransactionValidator::REASON_MODE_MISMATCH],
             'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE],
             'order_not_payable' => [TransactionValidator::REASON_ORDER_NOT_PAYABLE],
+            'order_closed' => [TransactionValidator::REASON_ORDER_CLOSED],
             'registration_failed' => [TransactionValidator::REASON_REGISTRATION_FAILED],
             // Regression test for the whole finding: a reason this class does
             // not (yet) know about must fail closed, not silently invite a
@@ -885,6 +886,9 @@ class TransactionValidatorTest extends TestCase
             // retrying won't change the answer, unlike REASON_ORDER_NOT_PAYABLE
             // below.
             'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE],
+            // The order can never take this money and the rejection is already
+            // recorded on it — ack instead of retrying for ~72h.
+            'order_closed' => [TransactionValidator::REASON_ORDER_CLOSED],
         ];
     }
 
@@ -961,12 +965,21 @@ class TransactionValidatorTest extends TestCase
             'mode_mismatch' => [TransactionValidator::REASON_MODE_MISMATCH, $doNotPayAgain],
             'reference_bound_elsewhere' => [TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE, $doNotPayAgain],
             'order_not_payable' => [TransactionValidator::REASON_ORDER_NOT_PAYABLE, $doNotPayAgain],
+            'order_closed' => [TransactionValidator::REASON_ORDER_CLOSED, $doNotPayAgain],
             'registration_failed' => [TransactionValidator::REASON_REGISTRATION_FAILED, $doNotPayAgain],
             // Regression test for the whole finding: an unrecognised reason must
             // fall into the safest copy, exactly like isTerminalForCustomer()
             // fails closed on terminality for the same input.
             'unknown reason fails closed' => ['some_future_reason', $doNotPayAgain],
         ];
+    }
+
+    public function testOrderClosedMessageMatchesOrderNotPayable(): void
+    {
+        $this->assertSame(
+            $this->validator->customerMessage(TransactionValidator::REASON_ORDER_NOT_PAYABLE),
+            $this->validator->customerMessage(TransactionValidator::REASON_ORDER_CLOSED)
+        );
     }
 
     public function testIsOverpaymentTrueWhenPaidExceedsExpected(): void
@@ -1113,6 +1126,7 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_MODE_MISMATCH,
             TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
             TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_ORDER_CLOSED,
             TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
@@ -1130,6 +1144,7 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_MODE_MISMATCH,
             TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
             TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_ORDER_CLOSED,
             TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
@@ -1147,6 +1162,7 @@ class TransactionValidatorTest extends TestCase
             TransactionValidator::REASON_MODE_MISMATCH,
             TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
             TransactionValidator::REASON_ORDER_NOT_PAYABLE,
+            TransactionValidator::REASON_ORDER_CLOSED,
             TransactionValidator::REASON_REGISTRATION_FAILED,
         ];
 
@@ -1170,5 +1186,80 @@ class TransactionValidatorTest extends TestCase
                     . "explicit-or-defaulted allow-list — decide and register it."
             );
         }
+    }
+
+    /**
+     * @dataProvider isPayableProvider
+     */
+    public function testIsPayable(string $state, float $baseTotalDue, bool $expected): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getState')->willReturn($state);
+        $order->method('getBaseTotalDue')->willReturn($baseTotalDue);
+
+        $this->assertSame($expected, $this->validator->isPayable($order));
+    }
+
+    public static function isPayableProvider(): array
+    {
+        return [
+            'new, due' => [Order::STATE_NEW, 5000.00, true],
+            'pending_payment, due' => [Order::STATE_PENDING_PAYMENT, 5000.00, true],
+            'new, nothing due' => [Order::STATE_NEW, 0.0, false],
+            'new, negative due' => [Order::STATE_NEW, -1.0, false],
+            'processing' => [Order::STATE_PROCESSING, 5000.00, false],
+            'canceled' => [Order::STATE_CANCELED, 5000.00, false],
+            'closed' => [Order::STATE_CLOSED, 5000.00, false],
+            'complete' => [Order::STATE_COMPLETE, 5000.00, false],
+            'holded' => [Order::STATE_HOLDED, 5000.00, false],
+        ];
+    }
+
+    /**
+     * @dataProvider isClosedForPaymentProvider
+     */
+    public function testIsClosedForPayment(string $state, float $baseTotalDue, bool $expected): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getState')->willReturn($state);
+        $order->method('getBaseTotalDue')->willReturn($baseTotalDue);
+
+        $this->assertSame($expected, $this->validator->isClosedForPayment($order));
+    }
+
+    public static function isClosedForPaymentProvider(): array
+    {
+        return [
+            'canceled, due' => [Order::STATE_CANCELED, 5000.00, true],
+            'closed, due' => [Order::STATE_CLOSED, 5000.00, true],
+            'complete, due' => [Order::STATE_COMPLETE, 5000.00, true],
+            'new, nothing due' => [Order::STATE_NEW, 0.0, true],
+            'new, due' => [Order::STATE_NEW, 5000.00, false],
+            'holded, due' => [Order::STATE_HOLDED, 5000.00, false],
+            'payment_review, due' => [Order::STATE_PAYMENT_REVIEW, 5000.00, false],
+        ];
+    }
+
+    /**
+     * @dataProvider chargeIsRealProvider
+     */
+    public function testChargeIsReal($data, bool $expected): void
+    {
+        $this->assertSame($expected, $this->validator->chargeIsReal($data));
+    }
+
+    public static function chargeIsRealProvider(): array
+    {
+        return [
+            'success, live' => [(object) ['status' => 'success', 'domain' => 'live'], true],
+            'success, domain missing' => [(object) ['status' => 'success'], true],
+            'success, domain null' => [(object) ['status' => 'success', 'domain' => null], true],
+            'success, test domain' => [(object) ['status' => 'success', 'domain' => 'test'], false],
+            'failed, live' => [(object) ['status' => 'failed', 'domain' => 'live'], false],
+            'abandoned' => [(object) ['status' => 'abandoned', 'domain' => 'live'], false],
+            'status missing' => [(object) ['domain' => 'live'], false],
+            'not an object' => ['success', false],
+            'null' => [null, false],
+        ];
     }
 }

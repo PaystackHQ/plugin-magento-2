@@ -94,6 +94,8 @@ To refund a customer, issue the refund directly from your Paystack dashboard (or
 
 **Customers report being charged without an order.** Verify the payment reference in your Paystack dashboard, then check the webhook delivery log there. Paystack retries failed webhook deliveries.
 
+**An order's history says "payment received after this order was closed".** Paystack took a payment for an order that was already cancelled, closed, completed or fully paid — for example a bank transfer that settled after the customer closed the payment window and checked out again. Search your orders for the reference in the comment. If the payment is not already reflected on an order, refund it from the Paystack dashboard or contact the customer.
+
 ## Support
 
 For issues with this extension, use the [issue tracker](https://github.com/PaystackHQ/plugin-magento-2/issues).

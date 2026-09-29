@@ -111,7 +111,8 @@ class SetupTest extends TestCase
             $this->createMock(LoggerInterface::class),
             $this->paystackClient,
             $this->transactionValidator,
-            $this->createMock(PaymentSettlement::class)
+            $this->createMock(PaymentSettlement::class),
+            $this->createMock(\Pstk\Paystack\Model\WebhookOrderResolver::class)
         );
     }
 

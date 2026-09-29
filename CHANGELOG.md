@@ -5,6 +5,49 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 The entries below cover every release since the last tag, **v3.0.10**.
 
+## [Unreleased]
+
+### Fixed
+- **Inline payments retried on the same cart now confirm via the webhook
+  (#69).** Closing the Paystack popup cancels the order and reuses its cart,
+  so a retry left several orders on one quote, and the webhook — which
+  required exactly one — left the paid order pending whenever it was the path
+  that confirmed payment (customer closed the tab, verify call failed). Order
+  lookup now lives in `Model/WebhookOrderResolver`: the reference as an
+  increment id, then an order the reference is already bound to, then the
+  order id the checkout now sends in the transaction metadata (matched with
+  its quote), then the quote — a lone order as before, otherwise the single
+  still-payable Paystack order, and never a guess among several.
+- **A charge for an order that can no longer take it is acknowledged once
+  recorded, instead of retried for ~72 hours.** Canceled, closed or complete
+  orders, or orders with nothing left due, now return the new `order_closed`
+  reason: the webhook answers `200` once a history comment asking the
+  merchant to refund or reconcile the charge is saved on the order, and logs
+  it at `critical`. Long runs of `503` are what make Paystack back off or
+  disable an endpoint. Orders on hold or under payment review keep retrying.
+- **A rejected real charge is never acknowledged without a record.** For any
+  decided rejection where real money moved, the webhook now retries (`503`)
+  until the order-history comment is saved, rather than answering `200` when
+  that write failed.
+
+### Changed
+- The inline checkout sends the placed order's id as `metadata.orderId` on
+  the Paystack transaction.
+- The inline REST verify endpoint and the Redirect callback report
+  `order_closed` (terminal, same customer message as `order_not_payable`)
+  for canceled/closed/complete or fully-paid orders.
+
+### Known limitations
+- Transactions without `metadata.orderId` (started before this release, or
+  from checkouts that replace Magento's standard payment renderer, e.g. Hyvä
+  or one-step checkouts) still resolve by quote: a late bank-transfer/USSD
+  settlement for a cancelled attempt can bind to the live retry order on the
+  same quote. The planned move to server-side transaction initialization
+  removes client-supplied ids altogether.
+- A quote with several orders of which none (or more than one) is payable
+  still ends in "order not found" — now logged at `error` with the candidate
+  orders, but without an order-history comment.
+
 ## [3.1.0] - 2026-09-29
 
 Every payment-verification path now confirms, from Paystack's verify response,

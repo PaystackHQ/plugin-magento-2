@@ -50,6 +50,9 @@ use Psr\Log\LoggerInterface;
  */
 class PaymentSettlement
 {
+    private const HISTORY_APPENDED = 'appended';
+    private const HISTORY_PRESENT = 'present';
+
     /** @var TransactionValidator */
     private $transactionValidator;
 
@@ -86,9 +89,15 @@ class PaymentSettlement
      *     `settlementFailureReason()` against *its* instance, not against
      *     whatever else may have written to this order since.
      * @param bool           $testMode Must come from `PaystackApiClient::isTestMode()`.
-     * @return array{reason: ?string, order: OrderInterface} `reason` is null
-     *     once bound/registered (or already idempotently bound); otherwise
-     *     the first failing REASON_* constant. `order` is the settled
+     * @return array{reason: ?string, order: OrderInterface, historyRecorded: bool}
+     *     `reason` is null once bound/registered (or already idempotently
+     *     bound); otherwise the first failing REASON_* constant.
+     *     `historyRecorded` is true on success/idempotent paths and when the
+     *     rejection's history line is durably on the order; false when that
+     *     write failed, or when nothing was recorded at all (early MALFORMED
+     *     returns, REASON_IN_FLIGHT) — the webhook only acknowledges a
+     *     rejection of a real charge once this is true (see
+     *     TransactionValidator::REASON_ORDER_CLOSED). `order` is the settled
      *     instance this method actually mutated and saved (or, when nothing
      *     could safely be validated/registered against, the best available
      *     instance) — callers must dispatch/reference THIS instance, not
@@ -109,7 +118,7 @@ class PaymentSettlement
             $this->logger->warning('Paystack: settlement registration missing readable reference', [
                 'order_increment_id' => $order->getIncrementId(),
             ]);
-            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order];
+            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order, 'historyRecorded' => false];
         }
 
         // Step 1: re-fetch fresh, guard the type, re-verify from scratch —
@@ -126,7 +135,7 @@ class PaymentSettlement
                 'reference' => $reference,
                 'order_increment_id' => $order->getIncrementId(),
             ]);
-            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order];
+            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order, 'historyRecorded' => false];
         } catch (\Throwable $exc) {
             // Genuinely transient (e.g. a DB hiccup) — fall through to the
             // type guard below, which falls back to the caller's own concrete
@@ -145,7 +154,7 @@ class PaymentSettlement
             $this->logger->warning('Paystack: settlement registration could not obtain a usable order instance', [
                 'reference' => $reference,
             ]);
-            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order];
+            return ['reason' => TransactionValidator::REASON_MALFORMED, 'order' => $order, 'historyRecorded' => false];
         }
 
         $reason = $this->transactionValidator->settlementFailureReason($transactionDetails, $freshOrder, $testMode);
@@ -157,10 +166,11 @@ class PaymentSettlement
             // would be noise, not signal — carried over from the deny-list
             // behavior Webhook.php's own recordHistory() used to have before
             // this was hoisted here.
+            $recorded = false;
             if ($reason !== TransactionValidator::REASON_IN_FLIGHT) {
-                $this->recordRejection($freshOrder, $reference, $reason, $transactionDetails);
+                $recorded = $this->recordRejection($freshOrder, $reference, $reason, $transactionDetails);
             }
-            return ['reason' => $reason, 'order' => $freshOrder];
+            return ['reason' => $reason, 'order' => $freshOrder, 'historyRecorded' => $recorded];
         }
 
         // Step 2: cross-order binding check — has this exact reference
@@ -172,13 +182,17 @@ class PaymentSettlement
 
         foreach ($existing as $item) {
             if ((int) $item->getOrderId() !== (int) $freshOrder->getEntityId()) {
-                $this->recordRejection(
+                $recorded = $this->recordRejection(
                     $freshOrder,
                     $reference,
                     TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
                     $transactionDetails
                 );
-                return ['reason' => TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE, 'order' => $freshOrder];
+                return [
+                    'reason' => TransactionValidator::REASON_REFERENCE_BOUND_ELSEWHERE,
+                    'order' => $freshOrder,
+                    'historyRecorded' => $recorded,
+                ];
             }
         }
 
@@ -193,7 +207,7 @@ class PaymentSettlement
                     'reference' => $reference,
                     'order_increment_id' => $freshOrder->getIncrementId(),
                 ]);
-                return ['reason' => null, 'order' => $freshOrder];
+                return ['reason' => null, 'order' => $freshOrder, 'historyRecorded' => true];
             }
         }
 
@@ -201,16 +215,14 @@ class PaymentSettlement
         // resolved. registerCaptureNotification() flips state as a side
         // effect, so a re-verify of an already-advanced order must hit step
         // 3's no-op before this guard could mistake it for not-payable.
-        if (!in_array($freshOrder->getState(), [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT], true)
-            || $freshOrder->getBaseTotalDue() <= 0
-        ) {
-            $this->recordRejection(
-                $freshOrder,
-                $reference,
-                TransactionValidator::REASON_ORDER_NOT_PAYABLE,
-                $transactionDetails
-            );
-            return ['reason' => TransactionValidator::REASON_ORDER_NOT_PAYABLE, 'order' => $freshOrder];
+        if (!$this->transactionValidator->isPayable($freshOrder)) {
+            // Terminal vs not-yet: see TransactionValidator::REASON_ORDER_CLOSED
+            // / REASON_ORDER_NOT_PAYABLE.
+            $reason = $this->transactionValidator->isClosedForPayment($freshOrder)
+                ? TransactionValidator::REASON_ORDER_CLOSED
+                : TransactionValidator::REASON_ORDER_NOT_PAYABLE;
+            $recorded = $this->recordRejection($freshOrder, $reference, $reason, $transactionDetails);
+            return ['reason' => $reason, 'order' => $freshOrder, 'historyRecorded' => $recorded];
         }
 
         // Steps 5-7: bind + register + persist. Unguarded, a throw here (e.g.
@@ -263,16 +275,20 @@ class PaymentSettlement
                 'reference' => $reference,
                 'order_increment_id' => $freshOrder->getIncrementId(),
             ]);
-            $this->recordRejection(
+            $recorded = $this->recordRejection(
                 $freshOrder,
                 $reference,
                 TransactionValidator::REASON_REGISTRATION_FAILED,
                 $transactionDetails
             );
-            return ['reason' => TransactionValidator::REASON_REGISTRATION_FAILED, 'order' => $freshOrder];
+            return [
+                'reason' => TransactionValidator::REASON_REGISTRATION_FAILED,
+                'order' => $freshOrder,
+                'historyRecorded' => $recorded,
+            ];
         }
 
-        return ['reason' => null, 'order' => $freshOrder];
+        return ['reason' => null, 'order' => $freshOrder, 'historyRecorded' => true];
     }
 
     /**
@@ -299,9 +315,10 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reason
      * @param object $transactionDetails Full envelope PaystackApiClient::verifyTransaction() returns
-     * @return void
+     * @return bool True when the rejection is durably on the order's history
+     *     (see writeHistory()).
      */
-    private function recordRejection(Order $order, string $reference, string $reason, object $transactionDetails): void
+    private function recordRejection(Order $order, string $reference, string $reason, object $transactionDetails): bool
     {
         $paidAmount = $this->transactionValidator->paidSubunits($transactionDetails) ?? 'unknown';
         // Guarded the same way TransactionValidator::allowListedContext()
@@ -312,34 +329,40 @@ class PaymentSettlement
         $paidCurrency = is_scalar($rawCurrency) ? substr((string) $rawCurrency, 0, 100) : 'unknown';
         $expectedSubunits = $this->transactionValidator->expectedSubunits($order);
 
-        $this->logger->warning('Paystack: settlement registration rejected', [
-            'reason' => $reason,
-            'reference' => $reference,
-            'order_increment_id' => $order->getIncrementId(),
-        ]);
+        $isClosed = TransactionValidator::REASON_ORDER_CLOSED === $reason;
 
-        // Two wordings, matching Webhook.php's pre-hoist recordHistory():
-        // "rejected" for reasons a retry can never fix, "not applied yet
-        // (retry pending)" for reasons that may still resolve on their own
-        // (e.g. REASON_MODE_MISMATCH) — collapsing both to "rejected"
-        // regardless of permanence would misrepresent a still-retrying
-        // reason as decided.
-        $isPermanent = $this->transactionValidator->isPermanentForWebhook($reason);
+        if ($isClosed) {
+            $lead = sprintf('received after this order was closed (%s)', $reason);
+            $suffix = '. If this charge is not already reflected on the order, refund or reconcile it.';
+        } else {
+            // Two wordings, matching Webhook.php's pre-hoist recordHistory():
+            // "rejected" for reasons a retry can never fix, "not applied yet
+            // (retry pending)" for reasons that may still resolve on their own
+            // (e.g. REASON_MODE_MISMATCH) — collapsing both to "rejected"
+            // regardless of permanence would misrepresent a still-retrying
+            // reason as decided.
+            $verdict = $this->transactionValidator->isPermanentForWebhook($reason)
+                ? 'rejected'
+                : 'not applied (retry pending)';
+            $lead = sprintf('%s — %s', $verdict, $reason);
+            $suffix = '';
+        }
 
-        $this->writeHistory(
+        return $this->writeHistory(
             $order,
             $reference,
             $reason,
             sprintf(
-                'Paystack: payment %s — %s: paid %s %s, expected %s %s, reference %s',
-                $isPermanent ? 'rejected' : 'not applied (retry pending)',
-                $reason,
+                'Paystack: payment %s: paid %s %s, expected %s %s, reference %s%s',
+                $lead,
                 $paidAmount,
                 $paidCurrency,
                 $expectedSubunits,
                 $order->getOrderCurrencyCode(),
-                $reference
-            )
+                $reference,
+                $suffix
+            ),
+            $isClosed
         );
     }
 
@@ -355,54 +378,88 @@ class PaymentSettlement
      * @param string $reference
      * @param string $reasonKey
      * @param string $comment
-     * @return bool True when a new comment was actually appended (not a
-     *     dedupe no-op or a failed write) — tells writeHistory() below
-     *     whether a save is even warranted.
+     * @return string|null HISTORY_APPENDED when a new comment was appended,
+     *     HISTORY_PRESENT for a dedupe no-op, null for a failed write —
+     *     tells writeHistory() below whether a save is warranted and whether
+     *     the record already exists.
      */
-    private function appendHistoryComment(Order $order, string $reference, string $reasonKey, string $comment): bool
+    private function appendHistoryComment(Order $order, string $reference, string $reasonKey, string $comment): ?string
     {
         $marker = $this->historyMarker($reference, $reasonKey);
         try {
             foreach ($order->getStatusHistories() ?? [] as $history) {
                 $existingComment = $history->getComment() ?? '';
                 if (strpos($existingComment, $marker) !== false) {
-                    return false;
+                    return self::HISTORY_PRESENT;
                 }
             }
 
             $order->addStatusToHistory($order->getStatus(), $comment . ' ' . $marker);
-            return true;
+            return self::HISTORY_APPENDED;
         } catch (\Throwable $exc) {
             $this->logger->error('Paystack: failed to write order history', ['error' => $exc->getMessage()]);
-            return false;
+            return null;
         }
     }
 
     /**
-     * Appends the history comment and immediately persists it — used only by
-     * the rejection path, which returns before reaching register()'s own
-     * single save. Skips the save entirely when nothing was actually
-     * appended (a dedupe no-op or a failed write) — the same behavior the
-     * webhook's original recordHistory() had. A failed save must not turn an
-     * already-decided rejection into a retry that can never fix it — log and
-     * continue.
+     * Appends the history comment, immediately persists it, and logs the
+     * rejection — used only by the rejection path, which returns before
+     * reaching register()'s own single save. Skips the save entirely when
+     * nothing was actually appended (a dedupe no-op or a failed write). A
+     * failed save is logged and reported through the return value, never
+     * thrown: the caller's `historyRecorded` tells the webhook whether the
+     * rejection is durably on the order, and it keeps retrying a real-money
+     * permanent rejection until it is (see Webhook::resolveSettlement).
+     *
+     * The log level is chosen here, once the outcome is known. A failed write
+     * is always critical — a real charge acknowledged later would otherwise
+     * leave no trace. A closed order that took a real charge is critical the
+     * first time it is recorded (the money is with Paystack and no order holds
+     * it, so an alert must see it) and info on replays of an already-recorded
+     * one; every other reason is a warning.
      *
      * @param Order  $order
      * @param string $reference
      * @param string $reasonKey
      * @param string $comment
-     * @return void
+     * @param bool   $isClosed Whether the reason is REASON_ORDER_CLOSED — picks the log levels above.
+     * @return bool True when the (reference, reason) record is durably on the
+     *     order: the marker was already present, or it was appended and saved.
      */
-    private function writeHistory(Order $order, string $reference, string $reasonKey, string $comment): void
-    {
-        if (!$this->appendHistoryComment($order, $reference, $reasonKey, $comment)) {
-            return;
+    private function writeHistory(
+        Order $order,
+        string $reference,
+        string $reasonKey,
+        string $comment,
+        bool $isClosed
+    ): bool {
+        $context = [
+            'reason' => $reasonKey,
+            'reference' => $reference,
+            'order_increment_id' => $order->getIncrementId(),
+        ];
+        $message = 'Paystack: settlement registration rejected';
+
+        $appended = $this->appendHistoryComment($order, $reference, $reasonKey, $comment);
+        if ($appended === self::HISTORY_PRESENT) {
+            $this->logger->{$isClosed ? 'info' : 'warning'}($message, $context);
+            return true;
+        }
+        if ($appended !== self::HISTORY_APPENDED) {
+            $this->logger->critical($message, $context);
+            return false;
         }
 
         try {
             $this->orderRepository->save($order);
         } catch (\Throwable $exc) {
             $this->logger->error('Paystack: failed to write order history', ['error' => $exc->getMessage()]);
+            $this->logger->critical($message, $context);
+            return false;
         }
+
+        $this->logger->{$isClosed ? 'critical' : 'warning'}($message, $context);
+        return true;
     }
 }

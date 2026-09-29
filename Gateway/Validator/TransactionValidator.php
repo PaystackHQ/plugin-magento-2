@@ -3,6 +3,7 @@
 namespace Pstk\Paystack\Gateway\Validator;
 
 use Magento\Sales\Api\Data\OrderInterface;
+use Magento\Sales\Model\Order;
 use Pstk\Paystack\Model\Payment\Paystack;
 use Psr\Log\LoggerInterface;
 
@@ -57,19 +58,31 @@ class TransactionValidator
     public const REASON_REFERENCE_BOUND_ELSEWHERE = 'reference_bound_elsewhere';
 
     /**
-     * The order is not in a state (STATE_NEW/STATE_PENDING_PAYMENT) that can
-     * still be registered as paid — e.g. canceled/closed. Never
-     * RETRYABLE_FOR_CUSTOMER (money moved or the situation is otherwise
-     * unrecoverable by retry — fail closed there), but deliberately NOT
-     * PERMANENT_FOR_WEBHOOK, unlike REASON_REFERENCE_BOUND_ELSEWHERE: a
-     * bank-transfer/USSD charge that is genuinely `pending` at callback time
-     * can settle minutes later via the webhook, and if the customer used
-     * `/paystack/payment/recreate` in the meantime the order is now
-     * `canceled` — a late but genuine `charge.success` must keep retrying
+     * The order is not payable right now, but the state may still change
+     * (holded, payment_review, ...). Terminal orders are REASON_ORDER_CLOSED,
+     * never this. Never RETRYABLE_FOR_CUSTOMER (money moved or the situation
+     * is otherwise unrecoverable by retry — fail closed there), but
+     * deliberately NOT PERMANENT_FOR_WEBHOOK, unlike
+     * REASON_REFERENCE_BOUND_ELSEWHERE: a bank-transfer/USSD charge that is
+     * genuinely `pending` at callback time can settle minutes later via the
+     * webhook, and an order that is held or under payment review may become
+     * payable again — a late but genuine `charge.success` must keep retrying
      * (Webhook.php's own `NEVER_RECENCY_BOUNDED`), not be permanently
      * dropped, or the money is captured with no order and no refund path.
      */
     public const REASON_ORDER_NOT_PAYABLE = 'order_not_payable';
+
+    /**
+     * The order can never take this money: canceled/closed/complete, or nothing
+     * left due (e.g. already paid by another reference) — see
+     * isClosedForPayment(). Always returned for such an order (deterministic,
+     * whether or not the history write succeeded); PaymentSettlement's
+     * `historyRecorded` tells the webhook whether the rejection is durably on
+     * the order, and it acknowledges (200) only then — instead of retrying for
+     * Paystack's ~72h budget, which risks endpoint back-off. Never RETRYABLE_FOR_CUSTOMER
+     * — money moved, fail closed.
+     */
+    public const REASON_ORDER_CLOSED = 'order_closed';
 
     /**
      * A throw from `Model/PaymentSettlement::register()`'s own bind/register/
@@ -128,6 +141,7 @@ class TransactionValidator
         self::REASON_CURRENCY_MISMATCH,
         self::REASON_ZERO_TOTAL,
         self::REASON_REFERENCE_BOUND_ELSEWHERE,
+        self::REASON_ORDER_CLOSED,
     ];
 
     /** @var LoggerInterface */
@@ -166,6 +180,41 @@ class TransactionValidator
     {
         $payment = $order->getPayment();
         return $payment !== null && $payment->getMethod() === Paystack::CODE;
+    }
+
+    /**
+     * True when the order can still be registered as paid: in a pre-payment
+     * state (STATE_NEW/STATE_PENDING_PAYMENT) with a positive base amount due.
+     * The single definition of that, used by
+     * Model/PaymentSettlement::register()'s order-state guard and the webhook
+     * order resolver. Allow-list, not deny-list, so a state this list doesn't
+     * know about fails closed.
+     *
+     * @param OrderInterface $order
+     * @return bool
+     */
+    public function isPayable(OrderInterface $order): bool
+    {
+        return in_array($order->getState(), [Order::STATE_NEW, Order::STATE_PENDING_PAYMENT], true)
+            && $order->getBaseTotalDue() > 0;
+    }
+
+    /**
+     * True when the order can never take a payment: a terminal state
+     * (canceled/closed/complete) or nothing left due. Distinct from merely
+     * !isPayable(): holded/payment_review orders are not payable *yet* and are
+     * deliberately not closed here.
+     *
+     * @param OrderInterface $order
+     * @return bool
+     */
+    public function isClosedForPayment(OrderInterface $order): bool
+    {
+        return in_array(
+            $order->getState(),
+            [Order::STATE_CANCELED, Order::STATE_CLOSED, Order::STATE_COMPLETE],
+            true
+        ) || $order->getBaseTotalDue() <= 0;
     }
 
     /**
@@ -218,6 +267,24 @@ class TransactionValidator
         }
 
         return (int) $rawAmount;
+    }
+
+    /**
+     * Whether a verify response's `data` describes a charge that actually moved
+     * money: a successful status on anything but the test domain. An unreadable
+     * `domain` counts as real — the safe side, since this only ever decides
+     * whether a lost history line is worth a retry.
+     *
+     * @param mixed $data The verify response's `data` property
+     * @return bool
+     */
+    public function chargeIsReal($data): bool
+    {
+        if (!is_object($data) || ($data->status ?? null) !== 'success') {
+            return false;
+        }
+
+        return ($data->domain ?? null) !== 'test';
     }
 
     /**

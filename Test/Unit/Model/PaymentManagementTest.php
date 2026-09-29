@@ -96,9 +96,15 @@ class PaymentManagementTest extends TestCase
      * @param string $quoteId
      * @param float  $grandTotal
      * @param string $currencyCode
+     * @param string $state
      * @return MockObject|\Magento\Sales\Model\Order
      */
-    private function stubMatchingOrder(string $quoteId, float $grandTotal = 5000.00, string $currencyCode = 'NGN')
+    private function stubMatchingOrder(
+        string $quoteId,
+        float $grandTotal = 5000.00,
+        string $currencyCode = 'NGN',
+        string $state = Order::STATE_NEW
+    )
     {
         $lastOrder = $this->createMock(\Magento\Sales\Model\Order::class);
         $lastOrder->method('getIncrementId')->willReturn('000000001');
@@ -116,7 +122,7 @@ class PaymentManagementTest extends TestCase
         $order->method('getEntityId')->willReturn(1);
         // PaymentSettlement::register()'s order-state guard: payable by
         // default so the settled-order tests reach registration.
-        $order->method('getState')->willReturn(Order::STATE_NEW);
+        $order->method('getState')->willReturn($state);
         $order->method('getBaseTotalDue')->willReturn($grandTotal);
 
         $this->orderInterface->method('loadByIncrementId')
@@ -487,6 +493,35 @@ class PaymentManagementTest extends TestCase
         $this->assertFalse($result['status']);
         $this->assertEquals('amount_mismatch', $result['reason']);
         $this->assertTrue($result['final'], 'Terminal: the customer must not be invited to pay again.');
+    }
+
+    /**
+     * A charge for a canceled order comes back from register() as
+     * REASON_ORDER_CLOSED: terminal for the customer, with the same fail-closed
+     * copy as REASON_ORDER_NOT_PAYABLE, and nothing dispatched.
+     */
+    public function testVerifyPaymentClosedOrderIsTerminalWithNotPayableMessage(): void
+    {
+        $quoteId = '42';
+        $reference = 'PSK_abc123_-~-_' . $quoteId;
+
+        $txData = $this->buildTxData('success', $quoteId);
+        $this->paystackClient->method('verifyTransaction')->willReturn((object) ['data' => $txData]);
+
+        $this->stubMatchingOrder($quoteId, 5000.00, 'NGN', Order::STATE_CANCELED);
+
+        $this->eventManager->expects($this->never())->method('dispatch');
+
+        $result = json_decode($this->paymentManagement->verifyPayment($reference), true);
+
+        $this->assertFalse($result['status']);
+        $this->assertEquals(TransactionValidator::REASON_ORDER_CLOSED, $result['reason']);
+        $this->assertTrue($result['final'], 'Terminal: the customer must not be invited to pay again.');
+        $this->assertSame(
+            (new TransactionValidator($this->createMock(LoggerInterface::class)))
+                ->customerMessage(TransactionValidator::REASON_ORDER_NOT_PAYABLE),
+            $result['message']
+        );
     }
 
     public function testVerifyPaymentCurrencyMismatchRejected(): void

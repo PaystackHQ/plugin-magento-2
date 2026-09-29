@@ -116,9 +116,20 @@ The HTTP status the endpoint returns tells Paystack whether redelivering the eve
 
 Any condition the module does not specifically recognise is treated as undecided and retried, because wrongly reporting a decision consumes Paystack's retry window and can leave a real payment permanently unconfirmed.
 
-When a settlement is refused, or accepted with an overpayment, the module records a comment on the order's status history giving the reason, the amount paid, the amount expected, and the transaction reference. The comment is written once per transaction and reason, so a retried event does not repeat it.
+When a settlement is refused, or accepted with an overpayment, the module records a comment on the order's status history giving the reason, the amount paid, the amount expected, and the transaction reference. The comment is written once per transaction and reason, so a retried event does not repeat it. A decided refusal of a real (live-mode, successful) charge is only acknowledged with `200` once that comment is saved; until then the endpoint returns `503` so the record is never lost.
 
-The webhook's fallback lookup of an order by `quote_id` (used when the popup flow's Paystack-generated reference has no matching order) resolves an ambiguous match by requiring exactly one candidate order, not by disambiguating on amount. This is a known, separate limitation, not addressed by the retry-semantics change above.
+A charge for an order that can no longer take it — canceled, closed or complete, or with nothing left due — is refused with reason `order_closed` and acknowledged with `200` once recorded. The comment asks you to refund or reconcile the charge if it is not already reflected on the order, and the module logs it at `critical`. Orders on hold or under payment review are refused with `order_not_payable` and keep being retried, because they may still become payable.
+
+### Order lookup
+
+Redirect payments use the order's increment id as the Paystack reference. Inline payments carry a Paystack-generated reference, so `Model\WebhookOrderResolver` locates the order in this order, first match wins:
+
+1. An order whose increment id equals the reference.
+2. A Paystack order the reference is already bound to (a redelivered event).
+3. The `orderId` and `quoteId` in the transaction's metadata, naming one Paystack order on that quote — in any state, so a late charge for a cancelled attempt is recorded against that attempt.
+4. The `quoteId` alone: the quote's only order, or else its single still-payable Paystack order. When several orders qualify, none is chosen and the event is treated as order-not-found (logged at `error` with the candidate orders).
+
+Both metadata ids are supplied by the customer's browser; what bounds their effect is the amount, currency, mode and one-reference-one-order checks every settlement goes through.
 
 ## Content Security Policy
 
@@ -138,7 +149,7 @@ If your store applies a custom CSP outside Magento's mechanism — at a CDN or r
 
 **Inline.** The order is placed, then checkout JavaScript opens the Paystack window. On success it calls `GET /V1/paystack/verify/{reference}_{quoteId}`. The module verifies with Paystack and dispatches `paystack_payment_verify_after`.
 
-Paystack generates the transaction reference on the client for inline payments, so the quote id is passed as transaction metadata. That gives the webhook a reliable way to locate the order when no Magento-generated reference exists.
+Paystack generates the transaction reference on the client for inline payments, so the quote id and the placed order's id are passed as transaction metadata. That gives the webhook a reliable way to locate the order when no Magento-generated reference exists — including after the customer closed the Paystack window and retried, which cancels the first order and places a new one on the same quote (see Order lookup above).
 
 **Redirect.** `/paystack/payment/setup` initialises the transaction and redirects to Paystack. The customer returns to `/paystack/payment/callback`, which verifies the transaction and dispatches `paystack_payment_verify_after`. Failed or abandoned payments route through `/paystack/payment/recreate`.
 
