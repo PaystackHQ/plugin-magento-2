@@ -76,6 +76,12 @@ Holding the confirmation email until payment is verified means customers are nev
 
 If verification does not complete — the customer closed the browser, or the network dropped — the webhook confirms the payment independently and moves the order forward.
 
+## Refunds
+
+A verified order shows its payment on the order (paid amount, invoice, transaction reference), but Magento's own **Credit Memo** / refund action is not available for Paystack orders — the extension does not submit refunds back through Magento.
+
+To refund a customer, issue the refund directly from your Paystack dashboard (or via Paystack's API). The Magento order itself is not updated automatically when you do this; add an order comment noting the refund if you want it visible on the order in Magento.
+
 ## Troubleshooting
 
 **Paystack does not appear at checkout.** Confirm **Enabled** is *Yes*, that both the public and secret key are filled in for the current mode, and that the order total falls between your configured minimum and maximum. Then run `php bin/magento cache:flush`.
