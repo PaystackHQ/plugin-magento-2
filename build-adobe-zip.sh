@@ -37,6 +37,7 @@ zip -r "$ZIP" . \
   -x "dev-repro/*" \
   -x "vendor/*" \
   -x ".env" \
+  -x ".env.sample" \
   -x "auth.json" \
   -x "CLAUDE.md" \
   -x "docs/*" \
